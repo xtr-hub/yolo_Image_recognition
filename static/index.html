@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人体识别 API - 图片/视频/摄像头</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+            font-size: 2.2em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .mode-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        .mode-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .mode-btn:hover {
+            background: #f0f2ff;
+        }
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 50px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            background: #f8f9ff;
+            border-color: #764ba2;
+        }
+        .upload-area.dragover {
+            background: #e8eaff;
+            border-color: #764ba2;
+        }
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        #fileInput, #videoInput {
+            display: none;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 5px;
+        }
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        }
+        .preview-section {
+            margin-top: 20px;
+            display: none;
+        }
+        .preview-section.active {
+            display: block;
+        }
+        .image-container {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            background: #f5f5f5;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #previewImage, #cameraVideo, #videoPreview {
+            max-width: 100%;
+            max-height: 500px;
+            display: block;
+        }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .video-controls {
+            margin-top: 15px;
+            text-align: center;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .result-section {
+            margin-top: 20px;
+            display: none;
+        }
+        .result-section.active {
+            display: block;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 18px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        .stat-label {
+            font-size: 0.85em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .person-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .person-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .person-item:hover {
+            background: #e8eaff;
+        }
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .message.error {
+            background: #fee;
+            color: #c33;
+        }
+        .message.success {
+            background: #efe;
+            color: #3c3;
+        }
+        .message.info {
+            background: #e8f4ff;
+            color: #0066cc;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: #f0f2ff;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+        .status-dot.connected {
+            background: #00c853;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .fps-counter {
+            font-family: monospace;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 人体识别系统</h1>
+        
+        <!-- 模式选择 -->
+        <div class="card">
+            <div class="mode-tabs">
+                <button class="mode-btn active" data-mode="image">📷 图片检测</button>
+                <button class="mode-btn" data-mode="camera">🎥 实时摄像头</button>
+                <button class="mode-btn" data-mode="video">🎬 视频文件</button>
+            </div>
+            
+            <!-- 状态栏 -->
+            <div class="status-bar" id="statusBar" style="display: none;">
+                <span class="status-indicator">
+                    <span class="status-dot" id="wsStatus"></span>
+                    <span id="wsStatusText">未连接</span>
+                </span>
+                <span class="fps-counter" id="fpsCounter"></span>
+            </div>
+
+            <!-- 图片上传模式 -->
+            <div id="imageMode">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📤</div>
+                    <p>点击或拖拽上传图片</p>
+                    <p style="color: #666; font-size: 14px; margin-top: 10px;">支持 JPG、PNG、BMP 格式</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/*">
+            </div>
+
+            <!-- 摄像头模式 -->
+            <div id="cameraMode" class="hidden">
+                <div class="video-controls">
+                    <button class="btn" id="startCameraBtn">🎥 开启摄像头</button>
+                    <button class="btn btn-danger hidden" id="stopCameraBtn">⏹️ 停止</button>
+                </div>
+                <video id="cameraVideo" autoplay playsinline muted></video>
+            </div>
+
+            <!-- 视频文件模式 -->
+            <div id="videoMode" class="hidden">
+                <div class="upload-area" id="videoUploadArea">
+                    <div class="upload-icon">🎬</div>
+                    <p>点击或拖拽上传视频文件</p>
+                    <p style="color: #666; font-size: 14px; margin-top: 10px;">支持 MP4、AVI、MOV 格式</p>
+                </div>
+                <input type="file" id="videoInput" accept="video/*">
+                <video id="videoPreview" controls style="display: none; margin-top: 15px;"></video>
+                <div class="progress-bar hidden" id="videoProgress">
+                    <div class="progress-fill" id="videoProgressFill">0%</div>
+                </div>
+            </div>
+            
+            <!-- 预览区域 -->
+            <div class="preview-section" id="previewSection">
+                <h3 style="margin-bottom: 15px;">检测结果</h3>
+                <div class="image-container">
+                    <img id="previewImage" alt="预览">
+                    <canvas id="canvas"></canvas>
+                </div>
+                <div style="margin-top: 15px; text-align: center;" id="imageControls">
+                    <button class="btn" id="detectBtn">🔍 开始检测</button>
+                </div>
+            </div>
+            
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p id="loadingText">正在处理...</p>
+            </div>
+            
+            <div id="message"></div>
+        </div>
+        
+        <!-- 结果展示 -->
+        <div class="card result-section" id="resultSection">
+            <h3 style="margin-bottom: 20px;">📊 检测结果</h3>
+            <div class="stats" id="stats"></div>
+            <h4 style="margin: 20px 0 15px;">检测到的人员</h4>
+            <div class="person-list" id="personList"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let currentMode = 'image';
+        let currentFile = null;
+        let ws = null;
+        let cameraStream = null;
+        let isCameraRunning = false;
+        let frameInterval = null;
+        let fps = 0;
+        let lastFrameTime = Date.now();
+
+        // DOM 元素
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const videoUploadArea = document.getElementById('videoUploadArea');
+        const videoInput = document.getElementById('videoInput');
+        const previewSection = document.getElementById('previewSection');
+        const previewImage = document.getElementById('previewImage');
+        const canvas = document.getElementById('canvas');
+        const cameraVideo = document.getElementById('cameraVideo');
+        const videoPreview = document.getElementById('videoPreview');
+        const detectBtn = document.getElementById('detectBtn');
+        const loading = document.getElementById('loading');
+        const resultSection = document.getElementById('resultSection');
+        const message = document.getElementById('message');
+        const statusBar = document.getElementById('statusBar');
+        const wsStatus = document.getElementById('wsStatus');
+        const wsStatusText = document.getElementById('wsStatusText');
+        const fpsCounter = document.getElementById('fpsCounter');
+
+        // 模式切换
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                switchMode(mode);
+            });
+        });
+
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // 更新按钮状态
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+
+            // 显示/隐藏对应区域
+            document.getElementById('imageMode').classList.toggle('hidden', mode !== 'image');
+            document.getElementById('cameraMode').classList.toggle('hidden', mode !== 'camera');
+            document.getElementById('videoMode').classList.toggle('hidden', mode !== 'video');
+            
+            // 重置状态
+            resetState();
+            
+            if (mode === 'camera') {
+                statusBar.style.display = 'flex';
+            } else {
+                statusBar.style.display = 'none';
+                stopCamera();
+            }
+        }
+
+        function resetState() {
+            previewSection.classList.remove('active');
+            resultSection.classList.remove('active');
+            previewImage.src = '';
+            clearCanvas();
+            hideMessage();
+            currentFile = null;
+        }
+
+        // 图片上传
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleImageFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleImageFile(e.target.files[0]);
+            }
+        });
+
+        function handleImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showMessage('请选择图片文件', 'error');
+                return;
+            }
+            
+            currentFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                previewSection.classList.add('active');
+                resultSection.classList.remove('active');
+                cameraVideo.style.display = 'none';
+                videoPreview.style.display = 'none';
+                previewImage.style.display = 'block';
+                hideMessage();
+                
+                previewImage.onload = () => {
+                    updateCanvasSize();
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 视频上传
+        videoUploadArea.addEventListener('click', () => videoInput.click());
+        
+        videoUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            videoUploadArea.classList.add('dragover');
+        });
+
+        videoUploadArea.addEventListener('dragleave', () => {
+            videoUploadArea.classList.remove('dragover');
+        });
+
+        videoUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            videoUploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleVideoFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        videoInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleVideoFile(e.target.files[0]);
+            }
+        });
+
+        function handleVideoFile(file) {
+            if (!file.type.startsWith('video/')) {
+                showMessage('请选择视频文件', 'error');
+                return;
+            }
+            
+            currentFile = file;
+            const url = URL.createObjectURL(file);
+            videoPreview.src = url;
+            videoPreview.style.display = 'block';
+            videoUploadArea.style.display = 'none';
+            
+            // 显示处理按钮
+            previewSection.classList.add('active');
+            previewImage.style.display = 'none';
+            cameraVideo.style.display = 'none';
+            document.getElementById('imageControls').innerHTML = `
+                <button class="btn" onclick="processVideoFile()">🎬 处理视频</button>
+            `;
+        }
+
+        async function processVideoFile() {
+            if (!currentFile) {
+                console.error('No file selected');
+                return;
+            }
+
+            loading.style.display = 'block';
+            document.getElementById('loadingText').textContent = '正在处理视频...';
+            
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            formData.append('return_video', 'true');
+            
+            // 调试日志
+            console.log('Sending video with return_video=true');
+            console.log('File:', currentFile.name, 'Size:', currentFile.size);
+
+            try {
+                const response = await fetch('/api/v1/video', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // 下载处理后的视频
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `detected_${currentFile.name}`;
+                a.click();
+                
+                showMessage('视频处理完成！', 'success');
+            } catch (error) {
+                showMessage('视频处理失败: ' + error.message, 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 摄像头功能
+        document.getElementById('startCameraBtn').addEventListener('click', startCamera);
+        document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
+
+        async function startCamera() {
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                
+                cameraVideo.srcObject = cameraStream;
+                cameraVideo.style.display = 'block';
+                previewSection.classList.add('active');
+                previewImage.style.display = 'none';
+                videoPreview.style.display = 'none';
+                
+                document.getElementById('startCameraBtn').classList.add('hidden');
+                document.getElementById('stopCameraBtn').classList.remove('hidden');
+                
+                isCameraRunning = true;
+                connectWebSocket();
+                
+                // 开始发送帧
+                setTimeout(() => {
+                    frameInterval = setInterval(sendFrame, 100); // 10 FPS
+                }, 1000);
+                
+            } catch (error) {
+                showMessage('无法访问摄像头: ' + error.message, 'error');
+            }
+        }
+
+        function stopCamera() {
+            isCameraRunning = false;
+            
+            if (frameInterval) {
+                clearInterval(frameInterval);
+                frameInterval = null;
+            }
+            
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            
+            cameraVideo.style.display = 'none';
+            document.getElementById('startCameraBtn').classList.remove('hidden');
+            document.getElementById('stopCameraBtn').classList.add('hidden');
+            
+            wsStatus.classList.remove('connected');
+            wsStatusText.textContent = '未连接';
+            fpsCounter.textContent = '';
+        }
+
+        // WebSocket 连接
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/detect`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket 连接成功');
+                wsStatus.classList.add('connected');
+                wsStatusText.textContent = '已连接';
+            };
+            
+            ws.onmessage = (event) => {
+                const result = JSON.parse(event.data);
+                
+                if (result.success) {
+                    // 更新 FPS
+                    const now = Date.now();
+                    fps = Math.round(1000 / (now - lastFrameTime));
+                    lastFrameTime = now;
+                    fpsCounter.textContent = `${fps} FPS`;
+                    
+                    // 显示标注后的图片
+                    if (result.annotated_image) {
+                        previewImage.src = result.annotated_image;
+                        previewImage.style.display = 'block';
+                        updateCanvasSize();
+                    }
+                    
+                    // 更新统计
+                    updateStats(result);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket 连接关闭');
+                wsStatus.classList.remove('connected');
+                wsStatusText.textContent = '已断开';
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+                wsStatusText.textContent = '连接错误';
+            };
+        }
+
+        function sendFrame() {
+            if (!isCameraRunning || !ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = cameraVideo.videoWidth || 640;
+            tempCanvas.height = cameraVideo.videoHeight || 480;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(cameraVideo, 0, 0);
+            
+            const base64 = tempCanvas.toDataURL('image/jpeg', 0.7);
+            ws.send(JSON.stringify({ image: base64 }));
+        }
+
+        // 图片检测
+        detectBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+
+            loading.style.display = 'block';
+            detectBtn.disabled = true;
+            hideMessage();
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+
+            try {
+                const response = await fetch('/api/v1/detect', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+                showMessage('检测完成！', 'success');
+            } catch (error) {
+                showMessage('检测失败: ' + error.message, 'error');
+            } finally {
+                loading.style.display = 'none';
+                detectBtn.disabled = false;
+            }
+        });
+
+        // 显示结果
+        function displayResults(data) {
+            updateStats(data);
+            
+            // 人员列表
+            const personList = document.getElementById('personList');
+            if (data.persons && data.persons.length > 0) {
+                personList.innerHTML = data.persons.map((person, index) => `
+                    <div class="person-item">
+                        <strong>人员 #${index + 1}</strong>
+                        <div style="margin-top: 8px; color: #666; font-size: 14px;">
+                            位置: (${person.bbox.x1}, ${person.bbox.y1}) - (${person.bbox.x2}, ${person.bbox.y2})<br>
+                            大小: ${person.bbox.width}×${person.bbox.height}<br>
+                            置信度: ${(person.confidence * 100).toFixed(1)}%
+                        </div>
+                    </div>
+                `).join('');
+
+                drawBoxes(data.persons);
+            } else {
+                personList.innerHTML = '<p style="text-align: center; color: #666;">未检测到人员</p>';
+                clearCanvas();
+            }
+
+            resultSection.classList.add('active');
+        }
+
+        function updateStats(data) {
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${data.person_count || 0}</div>
+                    <div class="stat-label">检测到人数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${data.inference_time_ms || 0}ms</div>
+                    <div class="stat-label">推理耗时</div>
+                </div>
+            `;
+        }
+
+        // Canvas 画框
+        function updateCanvasSize() {
+            if (!previewImage.naturalWidth) return;
+            canvas.width = previewImage.naturalWidth;
+            canvas.height = previewImage.naturalHeight;
+            canvas.style.width = previewImage.clientWidth + 'px';
+            canvas.style.height = previewImage.clientHeight + 'px';
+        }
+
+        function drawBoxes(persons) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const scaleX = canvas.width / previewImage.naturalWidth;
+            const scaleY = canvas.height / previewImage.naturalHeight;
+
+            persons.forEach((person, index) => {
+                const { x1, y1, x2, y2 } = person.bbox;
+                const sx1 = x1 * scaleX;
+                const sy1 = y1 * scaleY;
+                const sx2 = x2 * scaleX;
+                const sy2 = y2 * scaleY;
+                const sw = sx2 - sx1;
+                const sh = sy2 - sy1;
+                
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = Math.max(3, Math.min(sw, sh) / 50);
+                ctx.strokeRect(sx1, sy1, sw, sh);
+                
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+                ctx.fillRect(sx1, sy1, sw, sh);
+
+                const label = `Person ${index + 1}`;
+                ctx.font = 'bold 16px Arial';
+                const labelWidth = ctx.measureText(label).width + 16;
+                const labelHeight = 26;
+                
+                ctx.fillStyle = '#00ff00';
+                ctx.fillRect(sx1, sy1 - labelHeight, labelWidth, labelHeight);
+
+                ctx.fillStyle = '#000';
+                ctx.fillText(label, sx1 + 8, sy1 - 7);
+                
+                const confText = `${(person.confidence * 100).toFixed(0)}%`;
+                ctx.fillStyle = '#00ff00';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText(confText, sx1 + 4, sy2 - 4);
+            });
+        }
+
+        function clearCanvas() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function showMessage(text, type) {
+            message.innerHTML = `<div class="message ${type}">${text}</div>`;
+        }
+
+        function hideMessage() {
+            message.innerHTML = '';
+        }
+
+        // 窗口大小改变时更新 canvas
+        window.addEventListener('resize', () => {
+            if (previewImage.src) {
+                updateCanvasSize();
+            }
+        });
+    </script>
+</body>
+</html>
