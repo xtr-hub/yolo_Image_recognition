@@ -302,6 +302,10 @@
             <!-- 摄像头模式 -->
             <div id="cameraMode" class="hidden">
                 <div class="video-controls">
+                    <select id="cameraFacingMode" style="padding: 8px; margin-right: 10px; border-radius: 4px; border: 1px solid #ddd;">
+                        <option value="user">前置摄像头</option>
+                        <option value="environment">后置摄像头</option>
+                    </select>
                     <button class="btn" id="startCameraBtn">🎥 开启摄像头</button>
                     <button class="btn btn-danger hidden" id="stopCameraBtn">⏹️ 停止</button>
                 </div>
@@ -577,12 +581,12 @@
         // 摄像头功能
         document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
 
-        async function startCamera() {
+        async function startCamera(facingMode = 'user') {
             try {
                 // 优化移动端兼容性的摄像头参数
                 const constraints = {
                     video: {
-                        facingMode: 'user', // 默认前置摄像头
+                        facingMode: facingMode, // 'user' 为前置摄像头, 'environment' 为后置摄像头
                         width: { ideal: 640 },
                         height: { ideal: 480 },
                     }
@@ -619,7 +623,8 @@
                     showMessage('摄像头被其他应用占用', 'error');
                 } else if (error.name === 'OverconstrainedError') {
                     // 如果指定的约束条件无法满足，尝试基本约束
-                    tryFallbackCameraAccess();
+                    const facingMode = document.getElementById('cameraFacingMode').value;
+                    tryFallbackCameraAccess(facingMode);
                 } else {
                     showMessage('无法访问摄像头: ' + error.message, 'error');
                 }
@@ -627,10 +632,18 @@
         }
 
         // 摄像头访问降级处理
-        async function tryFallbackCameraAccess() {
+        async function tryFallbackCameraAccess(facingMode = 'user') {
             try {
                 // 尝试最基本的摄像头访问
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const constraints = {
+                    video: {
+                        facingMode: facingMode,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                    }
+                };
+
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
 
                 cameraVideo.srcObject = cameraStream;
                 cameraVideo.style.display = 'block';
@@ -657,6 +670,9 @@
         // 摄像头启动前检查和提示
         async function requestCameraPermission() {
             try {
+                // 获取用户选择的摄像头方向
+                const facingMode = document.getElementById('cameraFacingMode').value;
+
                 // 请求摄像头权限
                 const permissionName = 'camera';
                 if (navigator.permissions) {
@@ -667,20 +683,21 @@
                         document.getElementById('cameraPermissionsInfo').style.display = 'block';
                         return false;
                     } else if (permission.state === 'granted') {
-                        await startCamera();
+                        await startCamera(facingMode);
                         return true;
                     } else { // prompt
-                        await startCamera();
+                        await startCamera(facingMode);
                         return true;
                     }
                 } else {
                     // 旧版浏览器处理
-                    await startCamera();
+                    await startCamera(facingMode);
                     return true;
                 }
             } catch (err) {
                 console.error('权限检查失败:', err);
-                await startCamera();
+                const facingMode = document.getElementById('cameraFacingMode').value;
+                await startCamera(facingMode);
                 return true;
             }
         }
