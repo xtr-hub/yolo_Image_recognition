@@ -1,9 +1,11 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Request
 import cv2
 import numpy as np
 import base64
+from typing import List, Optional
 
 from app.models.detector import detector
+from app.core.config import BATCH_PROCESSING
 
 router = APIRouter()
 
@@ -137,5 +139,133 @@ async def health_check():
     return {
         "status": "healthy",  # 服务状态
         "model_loaded": detector.model_loaded,  # 模型是否加载
-        "device": detector.device if detector.model_loaded else None  # cuda 或 cpu
+        "device": detector.device if detector.model_loaded else None,  # cuda 或 cpu
+        "batch_processing_enabled": True  # 批处理功能启用状态
     }
+
+
+@router.post("/batch/detect")
+async def batch_detect(
+    image_files: List[UploadFile] = File(...),
+    max_workers: int = Query(BATCH_PROCESSING["default_max_workers"], ge=1, le=BATCH_PROCESSING["max_workers"]),
+    batch_size: int = Query(BATCH_PROCESSING["default_batch_size"], ge=1, le=BATCH_PROCESSING["max_batch_size"])
+):
+    """批量图片检测端点"""
+    import tempfile
+    import os
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    import psutil
+    import gc
+
+    if len(image_files) == 0:
+        raise HTTPException(status_code=400, detail="At least one image file is required")
+
+    # 创建临时目录存储上传的文件
+    with tempfile.TemporaryDirectory() as temp_dir:
+        saved_paths = []
+
+        for file in image_files:
+            # 验证文件类型
+            if not file.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}")
+
+            file_path = os.path.join(temp_dir, file.filename)
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            saved_paths.append(file_path)
+
+        # 读取所有图像
+        images = []
+        for path in saved_paths:
+            image = cv2.imread(path)
+            if image is not None:
+                images.append(image)
+
+        if not images:
+            raise HTTPException(status_code=400, detail="No valid images found")
+
+        # 执行批量检测
+        try:
+            # 使用优化的批量预测方法
+            results = detector.batch_predict_optimized(images, return_annotated=True)
+
+            # 准备返回数据
+            successful_results = []
+            failed_count = len(saved_paths) - len(images)
+
+            for i, (result, original_path) in enumerate(zip(results, saved_paths[:len(results)])):
+                result["input_path"] = original_path
+                successful_results.append(result)
+
+            return {
+                "success": True,
+                "total_processed": len(successful_results),
+                "failed_count": failed_count,
+                "results": successful_results
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+
+
+@router.post("/batch/detect-with-progress")
+async def batch_detect_with_progress(
+    image_files: List[UploadFile] = File(...),
+    max_workers: int = Query(BATCH_PROCESSING["default_max_workers"], ge=1, le=BATCH_PROCESSING["max_workers"])
+):
+    """带进度反馈的批量检测"""
+    import tempfile
+    import os
+    import uuid
+    from datetime import datetime
+
+    # 生成任务ID
+    task_id = str(uuid.uuid4())
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        saved_paths = []
+
+        for file in image_files:
+            # 验证文件类型
+            if not file.content_type.startswith('image/'):
+                raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}")
+
+            file_path = os.path.join(temp_dir, file.filename)
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            saved_paths.append(file_path)
+
+        # 读取所有图像
+        images = []
+        for path in saved_paths:
+            image = cv2.imread(path)
+            if image is not None:
+                images.append(image)
+
+        if not images:
+            raise HTTPException(status_code=400, detail="No valid images found")
+
+        # 执行批量检测
+        try:
+            # 使用优化的批量预测方法
+            results = detector.batch_predict_optimized(images, return_annotated=True)
+
+            # 准备返回数据
+            successful_results = []
+            failed_count = len(saved_paths) - len(images)
+
+            for i, (result, original_path) in enumerate(zip(results, saved_paths[:len(results)])):
+                result["input_path"] = original_path
+                successful_results.append(result)
+
+            return {
+                "task_id": task_id,
+                "status": "completed",
+                "total_processed": len(successful_results),
+                "failed_count": failed_count,
+                "results": successful_results
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
