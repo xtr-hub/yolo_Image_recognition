@@ -125,14 +125,46 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        #previewImage, #cameraVideo, #videoPreview {
+        #previewImage, #videoPreview {
             max-width: 100%;
-            max-height: 500px;
+            max-height: 70vh;  /* 限制最大高度，但仍保持响应性 */
             display: block;
+            margin: 0 auto;
+            border-radius: 8px; /* 添加圆角 */
+        }
+
+        .camera-video {
+            width: 100%;
+            max-height: 70vh;
+            object-fit: contain; /* 保持宽高比，避免变形 */
+            background: #000;
+            border-radius: 8px; /* 添加圆角 */
+        }
+
+        .image-container {
+            position: relative;
+            display: inline-block; /* 让容器适应内容大小 */
+            max-width: 100%;
+            width: fit-content; /* 容器宽度适应内容 */
+            background: transparent; /* 移除背景色 */
+            border-radius: 8px;
+            overflow: visible; /* 不裁剪内容 */
+            box-shadow: none; /* 移除阴影，使看起来更透明 */
         }
         .video-controls {
             margin-top: 15px;
             text-align: center;
+            display: flex;
+            flex-direction: column; /* 移动端垂直排列 */
+            align-items: center;
+            gap: 10px; /* 控制元素间距 */
+        }
+
+        @media (min-width: 768px) {
+            .video-controls {
+                flex-direction: row; /* 桌面端水平排列 */
+                justify-content: center;
+            }
         }
         .loading {
             text-align: center;
@@ -266,6 +298,70 @@
             color: white;
             font-size: 12px;
         }
+
+        /* 移动设备响应式设计 */
+        @media (max-width: 767px) {
+            .container {
+                padding: 5px; /* 减少移动端内边距 */
+            }
+
+            h1 {
+                font-size: 1.6em; /* 减小标题字体大小 */
+                margin-bottom: 15px;
+            }
+
+            .card {
+                padding: 15px; /* 减少卡片内边距 */
+                margin-bottom: 15px;
+            }
+
+            .mode-tabs {
+                flex-direction: column; /* 移动端垂直堆叠模式按钮 */
+                gap: 8px;
+            }
+
+            .mode-btn {
+                padding: 12px; /* 调整按钮内边距 */
+                font-size: 14px;
+                min-width: auto; /* 允许按钮适应内容宽度 */
+            }
+
+            .upload-area {
+                padding: 20px 15px; /* 减少上传区域内边距 */
+            }
+
+            .btn {
+                padding: 10px 15px; /* 减少按钮内边距 */
+                font-size: 14px;
+                width: 100%; /* 按钮全宽适应移动端 */
+                margin: 3px 0;
+            }
+
+            .video-controls select {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr; /* 移动端单列显示统计卡片 */
+                gap: 10px;
+            }
+
+            .stat-card {
+                padding: 12px; /* 减少统计卡片内边距 */
+            }
+
+            .stat-value {
+                font-size: 1.4em; /* 减小统计数值字体大小 */
+            }
+        }
+
+        @media (min-width: 768px) {
+            .video-controls {
+                flex-direction: row; /* 桌面端水平排列 */
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -302,22 +398,16 @@
             <!-- 摄像头模式 -->
             <div id="cameraMode" class="hidden">
                 <div class="video-controls">
-                    <select id="cameraFacingMode" style="padding: 8px; margin-right: 10px; border-radius: 4px; border: 1px solid #ddd;">
-                        <option value="user">前置摄像头</option>
-                        <option value="environment">后置摄像头</option>
-                    </select>
-                    <button class="btn" id="startCameraBtn">🎥 开启摄像头</button>
-                    <button class="btn btn-danger hidden" id="stopCameraBtn">⏹️ 停止</button>
+                    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 10px;">
+                        <select id="cameraFacingMode" style="padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                            <option value="user">前置摄像头</option>
+                            <option value="environment">后置摄像头</option>
+                        </select>
+                        <button class="btn" id="startCameraBtn">🎥 开启摄像头</button>
+                        <button class="btn btn-danger hidden" id="stopCameraBtn">⏹️ 停止</button>
+                    </div>
                 </div>
-                <div id="cameraPermissionsInfo" class="message info" style="display: none; margin-top: 15px;">
-                    <p><strong>摄像头权限说明:</strong></p>
-                    <ul style="text-align: left; margin-top: 8px;">
-                        <li>首次使用需允许浏览器访问摄像头</li>
-                        <li>如被拒绝，请在浏览器地址栏右侧图标处手动开启权限</li>
-                        <li>移动端请确保在HTTPS环境下使用</li>
-                    </ul>
-                </div>
-                <video id="cameraVideo" autoplay playsinline muted></video>
+                <video id="cameraVideo" class="camera-video" autoplay playsinline muted></video>
             </div>
 
             <!-- 视频文件模式 -->
@@ -373,6 +463,7 @@
         let frameInterval = null;
         let fps = 0;
         let lastFrameTime = Date.now();
+        let currentRequestController = null; // 用于管理当前请求
 
         // DOM 元素
         const uploadArea = document.getElementById('uploadArea');
@@ -419,23 +510,99 @@
 
             if (mode === 'camera') {
                 statusBar.style.display = 'flex';
-                // 显示摄像头权限说明
-                document.getElementById('cameraPermissionsInfo').style.display = 'block';
+                // 在摄像头模式下隐藏检测按钮
+                document.getElementById('imageControls').style.display = 'none';
             } else {
                 statusBar.style.display = 'none';
                 stopCamera();
-                // 隐藏摄像头权限说明
-                document.getElementById('cameraPermissionsInfo').style.display = 'none';
+                // 在非摄像头模式下显示检测按钮
+                document.getElementById('imageControls').style.display = 'block';
             }
         }
 
         function resetState() {
+            // 如果有正在进行的请求，取消它
+            if (currentRequestController) {
+                currentRequestController.abort();
+                currentRequestController = null;
+            }
+
             previewSection.classList.remove('active');
             resultSection.classList.remove('active');
             previewImage.src = '';
             // 不再需要clearCanvas()，因为不再使用canvas
             hideMessage();
             currentFile = null;
+
+            // 停止加载状态
+            loading.style.display = 'none';
+
+            // 重置视频预览状态
+            const videoPreview = document.getElementById('videoPreview');
+            if (videoPreview) {
+                videoPreview.style.display = 'none';
+                videoPreview.src = '';
+            }
+
+            // 隐藏视频上传区域
+            const videoUploadArea = document.getElementById('videoUploadArea');
+            if (videoUploadArea) {
+                videoUploadArea.style.display = 'block';
+            }
+
+            // 重置 imageControls 区域到初始状态（但不改变显示/隐藏状态）
+            document.getElementById('imageControls').innerHTML = `
+                <button class="btn" id="detectBtn">🔍 开始检测</button>
+            `;
+
+            // 重新绑定检测按钮的事件监听器
+            document.getElementById('detectBtn').addEventListener('click', async () => {
+                if (!currentFile) return;
+
+                // 如果已经有请求在运行，取消它
+                if (currentRequestController) {
+                    currentRequestController.abort();
+                }
+
+                // 创建新的控制器
+                currentRequestController = new AbortController();
+                const signal = currentRequestController.signal;
+
+                loading.style.display = 'block';
+                detectBtn.disabled = true;
+                hideMessage();
+
+                const formData = new FormData();
+                formData.append('file', currentFile);
+
+                try {
+                    const response = await fetch('/api/v1/detect', {
+                        method: 'POST',
+                        body: formData,
+                        signal  // 添加信号以支持取消
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    displayResults(data);
+                    showMessage('检测完成！', 'success');
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        console.log('Request was cancelled');
+                        showMessage('请求已取消', 'info');
+                    } else {
+                        showMessage('检测失败: ' + error.message, 'error');
+                    }
+                } finally {
+                    loading.style.display = 'none';
+                    detectBtn.disabled = false;
+                    // 请求完成后清除控制器
+                    currentRequestController = null;
+                }
+            });
         }
 
         // 图片上传
@@ -541,13 +708,22 @@
                 return;
             }
 
+            // 如果已经有请求在运行，取消它
+            if (currentRequestController) {
+                currentRequestController.abort();
+            }
+
+            // 创建新的控制器
+            currentRequestController = new AbortController();
+            const signal = currentRequestController.signal;
+
             loading.style.display = 'block';
             document.getElementById('loadingText').textContent = '正在处理视频...';
-            
+
             const formData = new FormData();
             formData.append('file', currentFile);
             formData.append('return_video', 'true');
-            
+
             // 调试日志
             console.log('Sending video with return_video=true');
             console.log('File:', currentFile.name, 'Size:', currentFile.size);
@@ -555,7 +731,8 @@
             try {
                 const response = await fetch('/api/v1/video', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal // 添加信号以支持取消
                 });
 
                 if (!response.ok) {
@@ -569,12 +746,19 @@
                 a.href = url;
                 a.download = `detected_${currentFile.name}`;
                 a.click();
-                
+
                 showMessage('视频处理完成！', 'success');
             } catch (error) {
-                showMessage('视频处理失败: ' + error.message, 'error');
+                if (error.name === 'AbortError') {
+                    console.log('Request was cancelled');
+                    showMessage('请求已取消', 'info');
+                } else {
+                    showMessage('视频处理失败: ' + error.message, 'error');
+                }
             } finally {
                 loading.style.display = 'none';
+                // 请求完成后清除控制器
+                currentRequestController = null;
             }
         }
 
@@ -679,8 +863,6 @@
                     const permission = await navigator.permissions.query({name: permissionName});
                     if (permission.state === 'denied') {
                         showMessage('摄像头权限已被拒绝，请在浏览器设置中手动启用', 'error');
-                        // 显示权限指导信息
-                        document.getElementById('cameraPermissionsInfo').style.display = 'block';
                         return false;
                     } else if (permission.state === 'granted') {
                         await startCamera(facingMode);
@@ -789,37 +971,6 @@
             ws.send(JSON.stringify({ image: base64 }));
         }
 
-        // 图片检测
-        detectBtn.addEventListener('click', async () => {
-            if (!currentFile) return;
-
-            loading.style.display = 'block';
-            detectBtn.disabled = true;
-            hideMessage();
-
-            const formData = new FormData();
-            formData.append('file', currentFile);
-
-            try {
-                const response = await fetch('/api/v1/detect', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                displayResults(data);
-                showMessage('检测完成！', 'success');
-            } catch (error) {
-                showMessage('检测失败: ' + error.message, 'error');
-            } finally {
-                loading.style.display = 'none';
-                detectBtn.disabled = false;
-            }
-        });
 
         // 显示结果 - 现在直接显示带框的图像
         function displayResults(data) {

@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 opencv-python
 ultralytics
-torch
-torchvision
+torch --index-url https://download.pytorch.org/whl/cu131
+torchvision --index-url https://download.pytorch.org/whl/cu131
 python-multipart
 pydantic-settings
