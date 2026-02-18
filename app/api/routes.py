@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 import cv2
 import numpy as np
+import base64
 
 from app.models.detector import detector
 
@@ -15,10 +16,17 @@ async def detect(file: UploadFile = File(...)):
     nparr = np.frombuffer(contents, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-    if image is None: 
+    if image is None:
         raise HTTPException(status_code=400, detail="Invalid image file")
-    # 检测
-    result = detector.detect_persons(image)
+
+    # 检测，要求返回带标注的图像
+    result = detector.detect_persons(image, return_annotated=True)
+
+    # 将带标注的图像编码为base64返回
+    if result.get("annotated_image") is not None:
+        _, buffer = cv2.imencode('.jpg', result["annotated_image"])
+        annotated_b64 = base64.b64encode(buffer).decode('utf-8')
+        result["annotated_image"] = f"data:image/jpeg;base64,{annotated_b64}"
 
     return result
 

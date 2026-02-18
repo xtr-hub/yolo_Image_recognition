@@ -130,12 +130,6 @@
             max-height: 500px;
             display: block;
         }
-        #canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none;
-        }
         .video-controls {
             margin-top: 15px;
             text-align: center;
@@ -311,6 +305,14 @@
                     <button class="btn" id="startCameraBtn">🎥 开启摄像头</button>
                     <button class="btn btn-danger hidden" id="stopCameraBtn">⏹️ 停止</button>
                 </div>
+                <div id="cameraPermissionsInfo" class="message info" style="display: none; margin-top: 15px;">
+                    <p><strong>摄像头权限说明:</strong></p>
+                    <ul style="text-align: left; margin-top: 8px;">
+                        <li>首次使用需允许浏览器访问摄像头</li>
+                        <li>如被拒绝，请在浏览器地址栏右侧图标处手动开启权限</li>
+                        <li>移动端请确保在HTTPS环境下使用</li>
+                    </ul>
+                </div>
                 <video id="cameraVideo" autoplay playsinline muted></video>
             </div>
 
@@ -397,7 +399,7 @@
 
         function switchMode(mode) {
             currentMode = mode;
-            
+
             // 更新按钮状态
             document.querySelectorAll('.mode-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
@@ -407,15 +409,19 @@
             document.getElementById('imageMode').classList.toggle('hidden', mode !== 'image');
             document.getElementById('cameraMode').classList.toggle('hidden', mode !== 'camera');
             document.getElementById('videoMode').classList.toggle('hidden', mode !== 'video');
-            
+
             // 重置状态
             resetState();
-            
+
             if (mode === 'camera') {
                 statusBar.style.display = 'flex';
+                // 显示摄像头权限说明
+                document.getElementById('cameraPermissionsInfo').style.display = 'block';
             } else {
                 statusBar.style.display = 'none';
                 stopCamera();
+                // 隐藏摄像头权限说明
+                document.getElementById('cameraPermissionsInfo').style.display = 'none';
             }
         }
 
@@ -423,7 +429,7 @@
             previewSection.classList.remove('active');
             resultSection.classList.remove('active');
             previewImage.src = '';
-            clearCanvas();
+            // 不再需要clearCanvas()，因为不再使用canvas
             hideMessage();
             currentFile = null;
         }
@@ -472,7 +478,7 @@
                 hideMessage();
                 
                 previewImage.onload = () => {
-                    updateCanvasSize();
+                    // 不再需要updateCanvasSize()，因为不再使用canvas
                 };
             };
             reader.readAsDataURL(file);
@@ -569,36 +575,118 @@
         }
 
         // 摄像头功能
-        document.getElementById('startCameraBtn').addEventListener('click', startCamera);
         document.getElementById('stopCameraBtn').addEventListener('click', stopCamera);
 
         async function startCamera() {
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 640, height: 480 } 
-                });
-                
+                // 优化移动端兼容性的摄像头参数
+                const constraints = {
+                    video: {
+                        facingMode: 'user', // 默认前置摄像头
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                    }
+                };
+
+                // 尝试获取用户媒体
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+
                 cameraVideo.srcObject = cameraStream;
                 cameraVideo.style.display = 'block';
                 previewSection.classList.add('active');
                 previewImage.style.display = 'none';
                 videoPreview.style.display = 'none';
-                
+
                 document.getElementById('startCameraBtn').classList.add('hidden');
                 document.getElementById('stopCameraBtn').classList.remove('hidden');
-                
+
                 isCameraRunning = true;
                 connectWebSocket();
-                
+
                 // 开始发送帧
                 setTimeout(() => {
                     frameInterval = setInterval(sendFrame, 100); // 10 FPS
                 }, 1000);
-                
+
             } catch (error) {
-                showMessage('无法访问摄像头: ' + error.message, 'error');
+                // 更详细的错误处理，包括权限错误
+                console.error('摄像头访问错误:', error);
+                if (error.name === 'NotAllowedError') {
+                    showMessage('摄像头访问被拒绝，请检查浏览器权限设置，确保允许此站点访问摄像头', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    showMessage('未找到可用摄像头', 'error');
+                } else if (error.name === 'NotReadableError') {
+                    showMessage('摄像头被其他应用占用', 'error');
+                } else if (error.name === 'OverconstrainedError') {
+                    // 如果指定的约束条件无法满足，尝试基本约束
+                    tryFallbackCameraAccess();
+                } else {
+                    showMessage('无法访问摄像头: ' + error.message, 'error');
+                }
             }
         }
+
+        // 摄像头访问降级处理
+        async function tryFallbackCameraAccess() {
+            try {
+                // 尝试最基本的摄像头访问
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+                cameraVideo.srcObject = cameraStream;
+                cameraVideo.style.display = 'block';
+                previewSection.classList.add('active');
+                previewImage.style.display = 'none';
+                videoPreview.style.display = 'none';
+
+                document.getElementById('startCameraBtn').classList.add('hidden');
+                document.getElementById('stopCameraBtn').classList.remove('hidden');
+
+                isCameraRunning = true;
+                connectWebSocket();
+
+                // 开始发送帧
+                setTimeout(() => {
+                    frameInterval = setInterval(sendFrame, 100); // 10 FPS
+                }, 1000);
+
+            } catch (error) {
+                showMessage('无法访问摄像头，请检查设备摄像头权限设置', 'error');
+            }
+        }
+
+        // 摄像头启动前检查和提示
+        async function requestCameraPermission() {
+            try {
+                // 请求摄像头权限
+                const permissionName = 'camera';
+                if (navigator.permissions) {
+                    const permission = await navigator.permissions.query({name: permissionName});
+                    if (permission.state === 'denied') {
+                        showMessage('摄像头权限已被拒绝，请在浏览器设置中手动启用', 'error');
+                        // 显示权限指导信息
+                        document.getElementById('cameraPermissionsInfo').style.display = 'block';
+                        return false;
+                    } else if (permission.state === 'granted') {
+                        await startCamera();
+                        return true;
+                    } else { // prompt
+                        await startCamera();
+                        return true;
+                    }
+                } else {
+                    // 旧版浏览器处理
+                    await startCamera();
+                    return true;
+                }
+            } catch (err) {
+                console.error('权限检查失败:', err);
+                await startCamera();
+                return true;
+            }
+        }
+
+        // 修改按钮事件处理器
+        document.getElementById('startCameraBtn').addEventListener('click', requestCameraPermission);
 
         function stopCamera() {
             isCameraRunning = false;
@@ -652,7 +740,6 @@
                     if (result.annotated_image) {
                         previewImage.src = result.annotated_image;
                         previewImage.style.display = 'block';
-                        updateCanvasSize();
                     }
                     
                     // 更新统计
@@ -717,10 +804,10 @@
             }
         });
 
-        // 显示结果
+        // 显示结果 - 现在直接显示带框的图像
         function displayResults(data) {
             updateStats(data);
-            
+
             // 人员列表
             const personList = document.getElementById('personList');
             if (data.persons && data.persons.length > 0) {
@@ -735,10 +822,17 @@
                     </div>
                 `).join('');
 
-                drawBoxes(data.persons);
+                // 检查是否已有带框图像返回
+                if (data.annotated_image) {
+                    // 直接显示带框的图像，不再使用canvas绘图
+                    previewImage.src = data.annotated_image;
+                }
             } else {
                 personList.innerHTML = '<p style="text-align: center; color: #666;">未检测到人员</p>';
-                clearCanvas();
+                // 如果没有检测到人但有带框图像，则显示带框图像
+                if (data.annotated_image) {
+                    previewImage.src = data.annotated_image;
+                }
             }
 
             resultSection.classList.add('active');
@@ -759,58 +853,11 @@
 
         // Canvas 画框
         function updateCanvasSize() {
-            if (!previewImage.naturalWidth) return;
-            canvas.width = previewImage.naturalWidth;
-            canvas.height = previewImage.naturalHeight;
-            canvas.style.width = previewImage.clientWidth + 'px';
-            canvas.style.height = previewImage.clientHeight + 'px';
+            // 现在不需要更新canvas，因为检测框直接绘制在图像上
+            // 此函数保留为空，以防有其他地方调用
         }
 
-        function drawBoxes(persons) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const scaleX = canvas.width / previewImage.naturalWidth;
-            const scaleY = canvas.height / previewImage.naturalHeight;
-
-            persons.forEach((person, index) => {
-                const { x1, y1, x2, y2 } = person.bbox;
-                const sx1 = x1 * scaleX;
-                const sy1 = y1 * scaleY;
-                const sx2 = x2 * scaleX;
-                const sy2 = y2 * scaleY;
-                const sw = sx2 - sx1;
-                const sh = sy2 - sy1;
-                
-                ctx.strokeStyle = '#00ff00';
-                ctx.lineWidth = Math.max(3, Math.min(sw, sh) / 50);
-                ctx.strokeRect(sx1, sy1, sw, sh);
-                
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
-                ctx.fillRect(sx1, sy1, sw, sh);
-
-                const label = `Person ${index + 1}`;
-                ctx.font = 'bold 16px Arial';
-                const labelWidth = ctx.measureText(label).width + 16;
-                const labelHeight = 26;
-                
-                ctx.fillStyle = '#00ff00';
-                ctx.fillRect(sx1, sy1 - labelHeight, labelWidth, labelHeight);
-
-                ctx.fillStyle = '#000';
-                ctx.fillText(label, sx1 + 8, sy1 - 7);
-                
-                const confText = `${(person.confidence * 100).toFixed(0)}%`;
-                ctx.fillStyle = '#00ff00';
-                ctx.font = 'bold 14px Arial';
-                ctx.fillText(confText, sx1 + 4, sy2 - 4);
-            });
-        }
-
-        function clearCanvas() {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
 
         function showMessage(text, type) {
             message.innerHTML = `<div class="message ${type}">${text}</div>`;
@@ -820,12 +867,41 @@
             message.innerHTML = '';
         }
 
-        // 窗口大小改变时更新 canvas
-        window.addEventListener('resize', () => {
-            if (previewImage.src) {
-                updateCanvasSize();
+        // 监听窗口大小改变事件
+        window.addEventListener('resize', updateCanvasOnResize);
+
+        // 监听滚动事件
+        window.addEventListener('scroll', updateCanvasOnScroll);
+
+        // 监听页面缩放事件
+        window.addEventListener('zoom', updateCanvasOnResize); // Firefox
+        window.addEventListener('DOMMouseScroll', updateCanvasOnResize); // Firefox
+        document.addEventListener('mousewheel', updateCanvasOnResize); // Chrome/Safari
+
+        // 当图片加载完成后，绑定事件监听器
+        previewImage.onload = () => {
+            updateCanvasSize();
+        };
+
+        // 页面可见性变化时也更新
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                setTimeout(updateCanvasSize, 100); // 短暂延迟以确保DOM已更新
             }
         });
+
+        function updateCanvasOnResize() {
+            if (previewImage.src || (cameraVideo.srcObject && cameraVideo.videoWidth > 0)) {
+                // 使用setTimeout确保在浏览器完成渲染后再更新canvas
+                setTimeout(updateCanvasSize, 0);
+            }
+        }
+
+        function updateCanvasOnScroll() {
+            // 在滚动结束后更新canvas
+            clearTimeout(window.scrollTimer);
+            window.scrollTimer = setTimeout(updateCanvasSize, 100);
+        }
     </script>
 </body>
 </html>
