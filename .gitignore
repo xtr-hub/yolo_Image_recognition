@@ -122,6 +122,7 @@ dmypy.json
 # IDEs
 .vscode/
 .idea/
+.claude/
 
 # OS generated files
 .DS_Store
