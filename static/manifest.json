@@ -1,7 +1,7 @@
 {
-  "name": "人体识别系统",
-  "short_name": "人体检测",
-  "description": "基于YOLOv8的人体检测系统",
+  "name": "物体识别系统",
+  "short_name": "物体检测",
+  "description": "基于 YOLOv8 的物体检测系统，支持 COCO 数据集的 80 种类别",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#667eea",

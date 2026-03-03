@@ -57,8 +57,8 @@ async def websocket_detect(websocket: WebSocket):
                     # 发送结果
                     await websocket.send_json({
                         "success": True,
-                        "person_count": result["person_count"],
-                        "persons": result["persons"],
+                        "object_count": result["object_count"],
+                        "objects": result["objects"],
                         "annotated_image": result.get("annotated_image", ""),
                         "inference_time_ms": result["inference_time_ms"]
                     })

@@ -1,15 +1,16 @@
-# YOLO Image Recognition Service
+# YOLO Object Recognition Service
 
-A Web service based on YOLOv8 for person detection in images, videos, and real-time cameras.
+A Web service based on YOLOv8 for object detection in images, videos, and real-time cameras, supporting 80 classes from the COCO dataset.
 
 ## Features
 
-- **Image Detection**: Upload an image to quickly detect persons in it
+- **Image Detection**: Upload an image to quickly detect objects in it
 - **Video Detection**: Supports video file detection, annotates results and allows downloading of annotated videos
 - **Real-time Communication**: WebSocket support for real-time camera detection
 - **Web Interface**: Provides a user-friendly visual operation interface with PWA support
 - **Health Check**: API endpoint for monitoring service status
 - **Multi-device Support**: Supports GPU acceleration and CPU inference
+- **Class Filtering**: Support filtering detection results by class
 
 ## Technology Stack
 
@@ -74,8 +75,8 @@ Response: Detection results in JSON format
 ```json
 {
   "success": true,
-  "person_count": 2,
-  "persons": [
+  "object_count": 2,
+  "objects": [
     {
       "bbox": {
         "x1": 100,
@@ -126,8 +127,8 @@ Response: Detection result JSON or processed video file
     {
       "frame": 10,
       "timestamp": 0.33,
-      "person_count": 1,
-      "persons": [...]
+      "object_count": 1,
+      "objects": [...]
     }
   ]
 }

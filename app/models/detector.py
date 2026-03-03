@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import time
 from pathlib import Path
 import os
@@ -12,6 +12,31 @@ import gc
 
 # 默认模型，可通过环境变量覆盖
 DEFAULT_MODEL = os.getenv('YOLO_MODEL', 'yolov8s')
+
+# COCO 数据集的 80 个类别
+COCO_CLASSES = {
+    0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane',
+    5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light',
+    10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench',
+    14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow',
+    20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack',
+    25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee',
+    30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite',
+    34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard',
+    38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork',
+    43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple',
+    48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog',
+    53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch',
+    58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv',
+    63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone',
+    68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator',
+    73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear',
+    78: 'hair drier', 79: 'toothbrush'
+}
+
+# 类别名称反转映射，用于从名称查找类别 ID
+COCO_CLASSES_REVERSE = {v: k for k, v in COCO_CLASSES.items()}
+
 
 class MemoryManager:
     """内存管理器，监控和控制内存使用"""
@@ -30,7 +55,7 @@ class MemoryManager:
         else:
             height, width = image_shape
             channels = 1
-        return height * width * channels * 4  # 使用4 bytes估计（浮点运算需要）
+        return height * width * channels * 4
 
     def cleanup_memory(self):
         """清理内存"""
@@ -43,15 +68,16 @@ class MemoryManager:
         """根据可用内存调整批处理大小"""
         available_memory = psutil.virtual_memory().available
         max_items_by_memory = available_memory // estimated_per_item_memory
-        # 保留一半内存作为缓冲
         return min(base_batch_size, max(1, max_items_by_memory // 2))
 
-class PersonDetector:
-    # 初始化
+
+class ObjectsDetector:
+    """通用物体检测器，支持 COCO 数据集的 80 个类别"""
+
     def __init__(self):
-        self.model = None # 模型
-        self.device = None # 设备
-        self.model_loaded = False # 模型是否加载
+        self.model = None
+        self.device = None
+        self.model_loaded = False
         self.memory_manager = MemoryManager()
 
     def _fourcc_to_str(self, fourcc):
@@ -62,25 +88,23 @@ class PersonDetector:
             return str(fourcc)
 
     def load_model(self):
-        # 模型加载逻辑
+        """加载 YOLO 模型"""
         model_name = DEFAULT_MODEL
         model_file = f"{model_name}.pt"
 
-        print(f"使用模型: {model_name}")
+        print(f"使用模型：{model_name}")
 
-        # 优先使用本地模型
         model_path = Path(model_file)
 
         if model_path.exists():
-            print(f"加载本地模型: {model_path.absolute()}")
+            print(f"加载本地模型：{model_path.absolute()}")
             self.model = YOLO(str(model_path))
         else:
-            # 尝试从当前目录查找
             current_dir = Path(__file__).parent.parent.parent
             model_path = current_dir / model_file
 
             if model_path.exists():
-                print(f"加载本地模型: {model_path.absolute()}")
+                print(f"加载本地模型：{model_path.absolute()}")
                 self.model = YOLO(str(model_path))
             else:
                 print(f"本地模型不存在，尝试下载...")
@@ -88,50 +112,92 @@ class PersonDetector:
                 try:
                     self.model = YOLO(model_file)
                 except Exception as e:
-                    print(f"模型下载失败: {e}")
+                    print(f"模型下载失败：{e}")
                     print(f"请手动下载模型文件放到项目根目录:")
                     print(f"   https://github.com/ultralytics/assets/releases/download/v8.4.0/{model_file}")
                     raise
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f"使用设备: {self.device}")
-        self.model.to(self.device) # 模型加载到设备
-        self.model_loaded = True # 模型是否加载完成
+        print(f"使用设备：{self.device}")
+        self.model.to(self.device)
+        self.model_loaded = True
         print("模型加载完成")
 
-    # 检测逻辑
-    def detect_persons(self, image, return_annotated=False):
-        # 检测模型是否已加载
+    def _parse_classes(self, classes: Optional[Union[List[int], List[str]]]) -> Optional[List[int]]:
+        """
+        解析类别参数，将类别名称转换为类别 ID
+        :param classes: 类别列表，可以是 ID 或名称
+        :return: 类别 ID 列表
+        """
+        if classes is None:
+            return None
+
+        class_ids = []
+        for c in classes:
+            if isinstance(c, str):
+                if c.lower() in COCO_CLASSES_REVERSE:
+                    class_ids.append(COCO_CLASSES_REVERSE[c.lower()])
+                else:
+                    print(f"警告：未知类别名称 '{c}'，已忽略")
+            elif isinstance(c, int) and c in COCO_CLASSES:
+                class_ids.append(c)
+            else:
+                print(f"警告：未知类别 ID {c}，已忽略")
+
+        return class_ids if class_ids else None
+
+    def detect_objects(
+        self,
+        image: np.ndarray,
+        return_annotated: bool = False,
+        classes: Optional[Union[List[int], List[str]]] = None,
+        conf_threshold: float = 0.5
+    ) -> Dict:
+        """
+        检测图像中的物体
+        :param image: 输入图像 (BGR 格式)
+        :param return_annotated: 是否返回标注后的图像
+        :param classes: 要检测的类别列表，可以是类别 ID 或类别名称
+                       如果为 None，则检测所有 80 个类别
+                       例如：[0] 或 ['person'] 只检测人，['car', 'person'] 检测车和人
+        :param conf_threshold: 置信度阈值，默认 0.5
+        :return: 检测结果字典
+        """
         if not self.model_loaded:
             raise Exception("Model not loaded. Please load the model first.")
 
         start_time = time.time()
-        results = self.model.predict(
-            image,
-            classes=[0],
-            conf=0.5,
-            device=self.device,
-            verbose=False # 不打印日志
-        )
+
+        class_ids = self._parse_classes(classes)
+
+        predict_kwargs = {
+            'conf': conf_threshold,
+            'device': self.device,
+            'verbose': False
+        }
+        if class_ids is not None:
+            predict_kwargs['classes'] = class_ids
+
+        results = self.model.predict(image, **predict_kwargs)
         inference_time = time.time() - start_time
 
-        # 解析结果
-        persons = []
+        objects = []
         result = results[0]
 
-        # 生成标注图片
         annotated_image = None
         if return_annotated:
-            # 总是生成标注图片，即使没有检测到目标
             annotated_image = result.plot() if len(result.boxes) > 0 else image.copy()
 
         if result.boxes is not None:
             for box in result.boxes:
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 confidence = float(box.conf[0])
-                persons.append(
+                class_id = int(box.cls[0])
+                class_name = COCO_CLASSES.get(class_id, f'unknown_{class_id}')
+
+                objects.append(
                     {
-                        "bbox":{
+                        "bbox": {
                             "x1": int(x1),
                             "y1": int(y1),
                             "x2": int(x2),
@@ -139,14 +205,16 @@ class PersonDetector:
                             "width": int(x2 - x1),
                             "height": int(y2 - y1)
                         },
-                        "confidence": round(confidence, 3)
+                        "confidence": round(confidence, 3),
+                        "class_id": class_id,
+                        "class_name": class_name
                     }
                 )
 
         return {
             "success": True,
-            "person_count": len(persons),
-            "persons": persons,
+            "object_count": len(objects),
+            "objects": objects,
             "inference_time_ms": round(inference_time * 1000, 2),
             "image_shape": {
                 "height": image.shape[0],
@@ -155,11 +223,19 @@ class PersonDetector:
             "annotated_image": annotated_image
         }
 
-    def batch_detect_persons(self, images: List, return_annotated: bool = False) -> List[Dict]:
+    def batch_detect_objects(
+        self,
+        images: List[np.ndarray],
+        return_annotated: bool = False,
+        classes: Optional[Union[List[int], List[str]]] = None,
+        conf_threshold: float = 0.5
+    ) -> List[Dict]:
         """
-        批量检测多张图像中的人体
+        批量检测多张图像中的物体
         :param images: 图像列表
         :param return_annotated: 是否返回标注后的图像
+        :param classes: 要检测的类别列表
+        :param conf_threshold: 置信度阈值
         :return: 检测结果列表
         """
         if not self.model_loaded:
@@ -168,19 +244,26 @@ class PersonDetector:
         if not images:
             return []
 
-        # 逐个处理每张图片
         results = []
         for image in images:
-            result = self.detect_persons(image, return_annotated)
+            result = self.detect_objects(image, return_annotated, classes, conf_threshold)
             results.append(result)
 
         return results
 
-    def batch_predict_optimized(self, images: List[np.ndarray], return_annotated: bool = False) -> List[Dict]:
+    def batch_predict_optimized(
+        self,
+        images: List[np.ndarray],
+        return_annotated: bool = False,
+        classes: Optional[Union[List[int], List[str]]] = None,
+        conf_threshold: float = 0.5
+    ) -> List[Dict]:
         """
         使用优化的批量预测方法检测多张图像
         :param images: 图像列表
         :param return_annotated: 是否返回标注后的图像
+        :param classes: 要检测的类别列表
+        :param conf_threshold: 置信度阈值
         :return: 检测结果列表
         """
         if not self.model_loaded:
@@ -191,24 +274,29 @@ class PersonDetector:
 
         start_time = time.time()
 
-        # 尝试一次性预测所有图像（YOLO模型内部可能会优化）
-        batch_results = self.model.predict(
-            images,
-            classes=[0],
-            conf=0.5,
-            device=self.device,
-            verbose=False
-        )
+        class_ids = self._parse_classes(classes)
+
+        predict_kwargs = {
+            'conf': conf_threshold,
+            'device': self.device,
+            'verbose': False
+        }
+        if class_ids is not None:
+            predict_kwargs['classes'] = class_ids
+
+        batch_results = self.model.predict(images, **predict_kwargs)
 
         results = []
         for i, result in enumerate(batch_results):
-            # 解析单个结果
-            persons = []
+            objects = []
             if result.boxes is not None:
                 for box in result.boxes:
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
                     confidence = float(box.conf[0])
-                    persons.append(
+                    class_id = int(box.cls[0])
+                    class_name = COCO_CLASSES.get(class_id, f'unknown_{class_id}')
+
+                    objects.append(
                         {
                             "bbox": {
                                 "x1": int(x1),
@@ -218,22 +306,22 @@ class PersonDetector:
                                 "width": int(x2 - x1),
                                 "height": int(y2 - y1)
                             },
-                            "confidence": round(confidence, 3)
+                            "confidence": round(confidence, 3),
+                            "class_id": class_id,
+                            "class_name": class_name
                         }
                     )
 
-            # 生成标注图片
             annotated_image = None
             if return_annotated:
                 annotated_image = result.plot() if len(result.boxes) > 0 else images[i].copy()
 
-            # 计算推理时间（平均值）
             inference_time_ms = round((time.time() - start_time) * 1000 / len(images), 2)
 
             results.append({
                 "success": True,
-                "person_count": len(persons),
-                "persons": persons,
+                "object_count": len(objects),
+                "objects": objects,
                 "inference_time_ms": inference_time_ms,
                 "image_shape": {
                     "height": images[i].shape[0],
@@ -244,16 +332,20 @@ class PersonDetector:
 
         return results
 
-    def detect_video_frame(self, frame: np.ndarray) -> Dict:
+    def detect_video_frame(self, frame: np.ndarray, **kwargs) -> Dict:
         """
         检测视频单帧，返回带标注的图片和结果
         """
-        result = self.detect_persons(frame, return_annotated=True)
+        result = self.detect_objects(frame, return_annotated=True, **kwargs)
         return result
 
-    def process_video_frames_batch(self, video_path: str,
-                                  frame_interval: int = 1,
-                                  output_dir: Optional[str] = None) -> Dict:
+    def process_video_frames_batch(
+        self,
+        video_path: str,
+        frame_interval: int = 1,
+        output_dir: Optional[str] = None,
+        classes: Optional[Union[List[int], List[str]]] = None
+    ) -> Dict:
         """批量处理视频帧"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -264,7 +356,6 @@ class PersonDetector:
         frame_timestamps = []
 
         try:
-            # 读取视频帧并按间隔选取
             while True:
                 ret, frame = cap.read()
                 if not ret:
@@ -281,15 +372,12 @@ class PersonDetector:
             if not frames_to_process:
                 return {"success": False, "error": "No frames extracted from video"}
 
-            # 使用优化的批量处理
-            results = self.batch_predict_optimized(frames_to_process, return_annotated=True)
+            results = self.batch_predict_optimized(frames_to_process, return_annotated=True, classes=classes)
 
-            # 添加帧编号和时间戳信息
             for i, (result, timestamp) in enumerate(zip(results, frame_timestamps)):
-                result["frame_number"] = i * frame_interval  # 实际帧号
+                result["frame_number"] = i * frame_interval
                 result["timestamp"] = timestamp
 
-                # 保存处理后的帧（如果指定了输出目录）
                 if output_dir and result.get("annotated_image") is not None:
                     from datetime import datetime
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -307,34 +395,32 @@ class PersonDetector:
             cap.release()
             return {"success": False, "error": str(e)}
 
-    def process_video_file(self, video_path: str, output_path: str = None) -> Dict:
+    def process_video_file(self, video_path: str, output_path: str = None,
+                          classes: Optional[Union[List[int], List[str]]] = None) -> Dict:
         """
         处理视频文件，逐帧检测
         """
         cap = cv2.VideoCapture(video_path)
 
         if not cap.isOpened():
-            raise RuntimeError(f"无法打开视频文件: {video_path}")
+            raise RuntimeError(f"无法打开视频文件：{video_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps == 0:
-            fps = 30  # 默认 30 FPS
+            fps = 30
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # 获取原视频的编码格式
         original_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
 
-        print(f"处理视频: {width}x{height} @ {fps}fps, 总帧数: {total_frames}")
-        print(f"原视频编码: {original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
-        print(f"output_path: {output_path}")  # 调试日志
+        print(f"处理视频：{width}x{height} @ {fps}fps, 总帧数：{total_frames}")
+        print(f"原视频编码：{original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
+        print(f"output_path: {output_path}")
 
-        # 创建输出视频
         writer = None
         if output_path:
-            # 使用 imageio 创建视频写入器（更稳定可靠）
             print(f"使用 imageio 创建视频写入器...")
             try:
                 writer = imageio.get_writer(
@@ -344,14 +430,14 @@ class PersonDetector:
                 )
                 print(f"imageio 写入器创建成功")
             except Exception as e:
-                print(f"无法创建视频写入器: {e}")
+                print(f"无法创建视频写入器：{e}")
                 import traceback
                 traceback.print_exc()
                 writer = None
 
         frame_results = []
         frame_count = 0
-        written_frames = 0  # 记录成功写入的帧数
+        written_frames = 0
 
         try:
             while True:
@@ -359,51 +445,43 @@ class PersonDetector:
                 if not ret:
                     break
 
-                # 检测当前帧
-                result = self.detect_persons(frame, return_annotated=True)
+                result = self.detect_objects(frame, return_annotated=True, classes=classes)
 
-                # 每一帧都写入输出视频（重要！）
                 if writer:
                     try:
                         if result.get("annotated_image") is not None:
                             annotated_frame = result["annotated_image"]
                         else:
-                            # 如果没有检测结果，使用原始帧
                             annotated_frame = frame
 
-                        # 确保帧尺寸匹配
                         if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
                             annotated_frame = cv2.resize(annotated_frame, (width, height))
 
-                        # 转换 BGR 为 RGB（imageio 需要 RGB）
                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                         writer.append_data(rgb_frame)
                         written_frames += 1
 
-                        # 每 30 帧确认一次写入成功
                         if written_frames % 30 == 0:
-                            print(f"已写入 {written_frames} 帧，当前帧尺寸: {rgb_frame.shape}")
+                            print(f"已写入 {written_frames} 帧，当前帧尺寸：{rgb_frame.shape}")
 
                     except Exception as e:
-                        print(f"写入帧 {frame_count} 失败: {e}")
+                        print(f"写入帧 {frame_count} 失败：{e}")
                         import traceback
                         traceback.print_exc()
 
-                # 只保存有检测结果的帧到 JSON（减少数据量）
-                if result["person_count"] > 0:
+                if result["object_count"] > 0:
                     frame_results.append({
                         "frame": frame_count,
                         "timestamp": round(frame_count / fps, 2),
-                        "person_count": result["person_count"],
-                        "persons": result["persons"]
+                        "object_count": result["object_count"],
+                        "objects": result["objects"]
                     })
 
                 frame_count += 1
 
-                # 每 30 帧打印一次进度
                 if frame_count % 30 == 0:
                     progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
-                    print(f"⏳ 处理进度: {frame_count}/{total_frames} ({progress:.1f}%)")
+                    print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
 
         finally:
             cap.release()
@@ -411,26 +489,24 @@ class PersonDetector:
                 writer.close()
                 print("视频写入器已关闭")
 
-        # 检查输出文件
         if output_path:
             if os.path.exists(output_path):
-                file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-                print(f"视频处理完成: 共处理 {frame_count} 帧, 成功写入 {written_frames} 帧")
-                print(f"输出文件: {output_path}")
-                print(f"文件大小: {file_size:.2f} MB")
+                file_size = os.path.getsize(output_path) / (1024 * 1024)
+                print(f"视频处理完成：共处理 {frame_count} 帧，成功写入 {written_frames} 帧")
+                print(f"输出文件：{output_path}")
+                print(f"文件大小：{file_size:.2f} MB")
 
-                # 检查文件是否可以被读取
                 try:
                     test_reader = imageio.get_reader(output_path)
                     test_frame = test_reader.get_data(0)
                     test_reader.close()
-                    print(f"视频文件可正常读取，第一帧尺寸: {test_frame.shape}")
+                    print(f"视频文件可正常读取，第一帧尺寸：{test_frame.shape}")
                 except Exception as e:
-                    print(f"视频文件无法读取: {e}")
+                    print(f"视频文件无法读取：{e}")
             else:
-                print(f"错误: 输出文件不存在!")
+                print(f"错误：输出文件不存在!")
         else:
-            print(f"视频分析完成: 共处理 {frame_count} 帧")
+            print(f"视频分析完成：共处理 {frame_count} 帧")
 
         return {
             "total_frames": total_frames,
@@ -442,5 +518,6 @@ class PersonDetector:
             "frames": frame_results
         }
 
+
 # 全局实例
-detector = PersonDetector()
+detector = ObjectsDetector()

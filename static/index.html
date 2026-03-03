@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>人体识别 API - 图片/视频/摄像头</title>
+    <title>物体识别 API - 图片/视频/摄像头</title>
     <link rel="manifest" href="/static/manifest.json">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="人体识别系统">
+    <meta name="apple-mobile-web-app-title" content="物体识别系统">
     <meta name="theme-color" content="#667eea">
     <style>
         * {
@@ -366,10 +366,39 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔍 人体识别系统</h1>
-        
+        <h1>🔍 物体识别系统</h1>
+
         <!-- 模式选择 -->
         <div class="card">
+            <!-- 设置区域 -->
+            <div class="settings-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9ff; border-radius: 8px;">
+                <h3 style="margin-bottom: 12px; color: #667eea;">⚙️ 检测设置</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 180px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">检测类别</label>
+                        <select id="classesSelect" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="">全部类别 (80 种)</option>
+                            <option value="person">仅人员</option>
+                            <option value="person,car">人员 + 车辆</option>
+                            <option value="car,motorcycle,bus,truck">所有车辆</option>
+                            <option value="cat,dog">宠物 (猫/狗)</option>
+                            <option value="chair,couch,bed,dining table">家具</option>
+                            <option value="tv,laptop,cell phone,keyboard,mouse">电子产品</option>
+                            <option value="banana,apple,orange,carrot,broccoli">水果蔬菜</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 180px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">置信度阈值</label>
+                        <select id="confThreshold" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="0.3">0.3 (低)</option>
+                            <option value="0.5" selected>0.5 (中)</option>
+                            <option value="0.7">0.7 (高)</option>
+                        </select>
+                    </div>
+                    <button class="btn" id="applySettingsBtn" style="min-width: 100px; height: 38px;">✅ 应用</button>
+                </div>
+            </div>
+
             <div class="mode-tabs">
                 <button class="mode-btn active" data-mode="image">📷 图片检测</button>
                 <button class="mode-btn" data-mode="camera">🎥 实时摄像头</button>
@@ -448,8 +477,8 @@
         <div class="card result-section" id="resultSection">
             <h3 style="margin-bottom: 20px;">📊 检测结果</h3>
             <div class="stats" id="stats"></div>
-            <h4 style="margin: 20px 0 15px;">检测到的人员</h4>
-            <div class="person-list" id="personList"></div>
+            <h4 style="margin: 20px 0 15px;">检测到的物体</h4>
+            <div class="object-list" id="objectList"></div>
         </div>
     </div>
 

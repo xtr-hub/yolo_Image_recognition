@@ -1,15 +1,16 @@
-# YOLO 图像识别服务
+# YOLO 物体识别服务
 
-基于 YOLOv8 的人物检测 Web 服务，提供图片、视频和实时摄像头中的人物检测功能。
+基于 YOLOv8 的物体检测 Web 服务，提供图片、视频和实时摄像头中的物体检测功能，支持 COCO 数据集的 80 种常见物体类别。
 
 ## 功能特点
 
-- **图片检测**：上传图片即可快速识别图中人物
+- **图片检测**：上传图片即可快速识别图中物体，支持 80 种类别
 - **视频检测**：支持视频文件检测，标注检测结果并可下载标注视频
 - **实时通信**：WebSocket 支持实时摄像头检测
-- **Web 界面**：提供友好的可视化操作界面，支持 PWA
+- **Web 界面**：提供友好的可视化操作界面，支持 PWA，可自定义检测类别和模型
 - **健康检查**：服务状态监控接口
 - **多设备支持**：支持 GPU 加速和 CPU 推理
+- **类别过滤**：支持按类别筛选检测结果
 
 ## 技术栈
 
@@ -74,8 +75,8 @@ Content-Type: multipart/form-data
 ```json
 {
   "success": true,
-  "person_count": 2,
-  "persons": [
+  "object_count": 2,
+  "objects": [
     {
       "bbox": {
         "x1": 100,
@@ -85,7 +86,9 @@ Content-Type: multipart/form-data
         "width": 100,
         "height": 250
       },
-      "confidence": 0.95
+      "confidence": 0.95,
+      "class_id": 0,
+      "class_name": "person"
     }
   ],
   "inference_time_ms": 45.2,
@@ -126,8 +129,8 @@ Content-Type: multipart/form-data
     {
       "frame": 10,
       "timestamp": 0.33,
-      "person_count": 1,
-      "persons": [...]
+      "object_count": 1,
+      "objects": [...]
     }
   ]
 }
@@ -150,9 +153,10 @@ WS /ws/detect
 服务启动后提供可视化操作界面，支持：
 
 - **图片检测模式**：上传图片并查看检测结果
-- **摄像头模式**：实时检测摄像头画面中的人物
+- **摄像头模式**：实时检测摄像头画面中的物体
 - **视频模式**：上传视频文件，处理后下载标注视频
-- **实时统计**：显示检测人数、推理时间等信息
+- **实时统计**：显示检测物体数量、推理时间等信息
+- **类别选择**：可选择检测特定类别的物体
 - **PWA 支持**：可添加到主屏幕作为独立应用使用
 
 ## 配置选项
@@ -184,7 +188,7 @@ WS /ws/detect
 │   ├── core/              # 配置模块
 │   │   └── config.py      # 配置文件
 │   ├── models/            # 检测模型
-│   │   └── detector.py    # 人物检测器
+│   │   └── detector.py    # 物体检测器
 │   └── main.py            # 应用入口
 ├── static/                # 前端静态资源
 │   ├── index.html         # 主页面
