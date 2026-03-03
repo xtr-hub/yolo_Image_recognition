@@ -216,14 +216,14 @@
             max-height: 300px;
             overflow-y: auto;
         }
-        .person-item {
+        .object-item {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 8px;
             border-left: 4px solid #667eea;
         }
-        .person-item:hover {
+        .object-item:hover {
             background: #e8eaff;
         }
         .message {
@@ -370,11 +370,15 @@
 
         <!-- 模式选择 -->
         <div class="card">
-            <!-- 设置区域 -->
-            <div class="settings-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9ff; border-radius: 8px;">
-                <h3 style="margin-bottom: 12px; color: #667eea;">⚙️ 检测设置</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
-                    <div style="flex: 1; min-width: 180px;">
+            <!-- 设置入口按钮 -->
+            <div style="text-align: center; margin-bottom: 15px;">
+                <button class="btn" id="toggleSettingsBtn" style="min-width: 150px;">⚙️ 检测设置</button>
+            </div>
+            <!-- 设置区域（默认隐藏） -->
+            <div class="settings-section" id="settingsPanel" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9ff; border-radius: 8px;">
+                <h3 style="margin-bottom: 12px; color: #667eea; text-align: center;">检测参数配置</h3>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: center;">
+                    <div style="flex: 1; min-width: 180px; max-width: 250px; display: flex; flex-direction: column; justify-content: center;">
                         <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">检测类别</label>
                         <select id="classesSelect" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
                             <option value="">全部类别 (80 种)</option>
@@ -387,7 +391,7 @@
                             <option value="banana,apple,orange,carrot,broccoli">水果蔬菜</option>
                         </select>
                     </div>
-                    <div style="flex: 1; min-width: 180px;">
+                    <div style="flex: 1; min-width: 180px; max-width: 250px; display: flex; flex-direction: column; justify-content: center;">
                         <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">置信度阈值</label>
                         <select id="confThreshold" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
                             <option value="0.3">0.3 (低)</option>
@@ -395,7 +399,27 @@
                             <option value="0.7">0.7 (高)</option>
                         </select>
                     </div>
-                    <button class="btn" id="applySettingsBtn" style="min-width: 100px; height: 38px;">✅ 应用</button>
+                    <div style="flex: 1; min-width: 180px; max-width: 250px; display: flex; flex-direction: column; justify-content: center;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">视频批处理大小</label>
+                        <select id="batchSize" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="4">4 帧 (省内存)</option>
+                            <option value="8" selected>8 帧 (平衡)</option>
+                            <option value="16">16 帧 (高性能)</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 180px; max-width: 250px; display: flex; flex-direction: column; justify-content: center;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333;">视频帧间隔</label>
+                        <select id="frameInterval" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="1" selected>每帧检测</option>
+                            <option value="2">隔帧检测 (2 帧 1 次)</option>
+                            <option value="3">每 3 帧检测 1 次</option>
+                        </select>
+                    </div>
+                    <div style="flex: 0 0 auto; display: flex; align-items: center; padding-top: 16px; gap: 8px;">
+                        <button class="btn" id="applySettingsBtn" style="min-width: 100px;">✅ 应用</button>
+                        <button class="btn" id="resetSettingsBtn" style="min-width: 100px; background: linear-gradient(135deg, #999 0%, #777 100%);">🔄 重置</button>
+                        <button class="btn" id="closeSettingsBtn" style="min-width: 100px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">❌ 关闭</button>
+                    </div>
                 </div>
             </div>
 
@@ -527,6 +551,147 @@
         const wsStatusText = document.getElementById('wsStatusText');
         const fpsCounter = document.getElementById('fpsCounter');
 
+        // 设置默认值
+        const DEFAULT_SETTINGS = {
+            classes: '',
+            confThreshold: '0.5',
+            batchSize: '8',
+            frameInterval: '1'
+        };
+
+        // 初始化设置
+        function initSettings() {
+            const saved = localStorage.getItem('detectionSettings');
+            const settings = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+
+            document.getElementById('classesSelect').value = settings.classes;
+            document.getElementById('confThreshold').value = settings.confThreshold;
+            document.getElementById('batchSize').value = settings.batchSize;
+            document.getElementById('frameInterval').value = settings.frameInterval;
+        }
+
+        // 切换设置面板显示/隐藏
+        function toggleSettingsPanel() {
+            const panel = document.getElementById('settingsPanel');
+            const btn = document.getElementById('toggleSettingsBtn');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                btn.textContent = '📋 隐藏设置';
+                btn.style.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+            } else {
+                panel.style.display = 'none';
+                btn.textContent = '⚙️ 检测设置';
+                btn.style.background = '';
+            }
+        }
+
+        // 关闭设置面板
+        function closeSettingsPanel() {
+            document.getElementById('settingsPanel').style.display = 'none';
+            document.getElementById('toggleSettingsBtn').textContent = '⚙️ 检测设置';
+            document.getElementById('toggleSettingsBtn').style.background = '';
+        }
+
+        // 保存设置
+        function saveSettings() {
+            const settings = {
+                classes: document.getElementById('classesSelect').value,
+                confThreshold: document.getElementById('confThreshold').value,
+                batchSize: document.getElementById('batchSize').value,
+                frameInterval: document.getElementById('frameInterval').value
+            };
+            localStorage.setItem('detectionSettings', JSON.stringify(settings));
+            return settings;
+        }
+
+        // 重置设置
+        function resetSettings() {
+            document.getElementById('classesSelect').value = DEFAULT_SETTINGS.classes;
+            document.getElementById('confThreshold').value = DEFAULT_SETTINGS.confThreshold;
+            document.getElementById('batchSize').value = DEFAULT_SETTINGS.batchSize;
+            document.getElementById('frameInterval').value = DEFAULT_SETTINGS.frameInterval;
+            localStorage.removeItem('detectionSettings');
+            showMessage('设置已重置为默认值', 'success');
+        }
+
+        // 获取当前设置
+        function getCurrentSettings() {
+            return {
+                classes: document.getElementById('classesSelect').value,
+                confThreshold: document.getElementById('confThreshold').value,
+                batchSize: document.getElementById('batchSize').value,
+                frameInterval: document.getElementById('frameInterval').value
+            };
+        }
+
+        // 初始化设置
+        initSettings();
+
+        // 绑定初始检测按钮事件
+        function bindInitialDetectBtnEvent() {
+            const detectBtn = document.getElementById('detectBtn');
+            if (detectBtn && !detectBtn.onclick) {
+                detectBtn.onclick = async () => {
+                    console.log('开始检测按钮被点击（初始）');
+                    if (!currentFile) {
+                        console.log('没有选择文件');
+                        return;
+                    }
+
+                    if (currentRequestController) {
+                        currentRequestController.abort();
+                    }
+
+                    currentRequestController = new AbortController();
+                    const signal = currentRequestController.signal;
+
+                    loading.style.display = 'block';
+                    detectBtn.disabled = true;
+                    hideMessage();
+
+                    const formData = new FormData();
+                    formData.append('file', currentFile);
+
+                    const settings = getCurrentSettings();
+                    if (settings.classes) {
+                        formData.append('classes', settings.classes);
+                    }
+                    formData.append('conf_threshold', settings.confThreshold);
+
+                    try {
+                        const response = await fetch('/api/v1/detect', {
+                            method: 'POST',
+                            body: formData,
+                            signal
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        displayResults(data);
+                        showMessage('检测完成！', 'success');
+                    } catch (error) {
+                        if (error.name === 'AbortError') {
+                            console.log('Request was cancelled');
+                            showMessage('请求已取消', 'info');
+                        } else {
+                            console.error('检测失败:', error);
+                            showMessage('检测失败：' + error.message, 'error');
+                        }
+                    } finally {
+                        loading.style.display = 'none';
+                        detectBtn.disabled = false;
+                        currentRequestController = null;
+                    }
+                };
+            }
+        }
+
+        // 绑定初始按钮事件
+        bindInitialDetectBtnEvent();
+
         // 模式切换
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -594,13 +759,19 @@
             }
 
             // 重置 imageControls 区域到初始状态（但不改变显示/隐藏状态）
-            document.getElementById('imageControls').innerHTML = `
+            const imageControls = document.getElementById('imageControls');
+            imageControls.innerHTML = `
                 <button class="btn" id="detectBtn">🔍 开始检测</button>
             `;
 
-            // 重新绑定检测按钮的事件监听器
-            document.getElementById('detectBtn').addEventListener('click', async () => {
-                if (!currentFile) return;
+            // 重新绑定检测按钮的事件监听器 - 使用 onclick 避免多次绑定
+            const newDetectBtn = imageControls.querySelector('#detectBtn');
+            newDetectBtn.onclick = async () => {
+                console.log('开始检测按钮被点击');
+                if (!currentFile) {
+                    console.log('没有选择文件');
+                    return;
+                }
 
                 // 如果已经有请求在运行，取消它
                 if (currentRequestController) {
@@ -612,11 +783,18 @@
                 const signal = currentRequestController.signal;
 
                 loading.style.display = 'block';
-                detectBtn.disabled = true;
+                newDetectBtn.disabled = true;
                 hideMessage();
 
                 const formData = new FormData();
                 formData.append('file', currentFile);
+
+                // 添加检测设置参数
+                const settings = getCurrentSettings();
+                if (settings.classes) {
+                    formData.append('classes', settings.classes);
+                }
+                formData.append('conf_threshold', settings.confThreshold);
 
                 try {
                     const response = await fetch('/api/v1/detect', {
@@ -641,11 +819,11 @@
                     }
                 } finally {
                     loading.style.display = 'none';
-                    detectBtn.disabled = false;
+                    newDetectBtn.disabled = false;
                     // 请求完成后清除控制器
                     currentRequestController = null;
                 }
-            });
+            };
         }
 
         // 图片上传
@@ -673,6 +851,24 @@
                 handleImageFile(e.target.files[0]);
             }
         });
+
+        // 应用设置按钮
+        document.getElementById('applySettingsBtn').addEventListener('click', () => {
+            const settings = saveSettings();
+            const classesText = settings.classes || '全部';
+            showMessage(`设置已应用并保存：检测类别=${classesText}，置信度阈值=${settings.confThreshold}，批处理大小=${settings.batchSize}，帧间隔=${settings.frameInterval}`, 'success');
+        });
+
+        // 重置设置按钮
+        document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+            resetSettings();
+        });
+
+        // 切换设置面板按钮
+        document.getElementById('toggleSettingsBtn').onclick = toggleSettingsPanel;
+
+        // 关闭设置面板按钮
+        document.getElementById('closeSettingsBtn').onclick = closeSettingsPanel;
 
         function handleImageFile(file) {
             if (!file.type.startsWith('image/')) {
@@ -767,9 +963,18 @@
             formData.append('file', currentFile);
             formData.append('return_video', 'true');
 
+            // 添加检测设置参数
+            const settings = getCurrentSettings();
+            if (settings.classes) {
+                formData.append('classes', settings.classes);
+            }
+            formData.append('batch_size', settings.batchSize);
+            formData.append('frame_interval', settings.frameInterval);
+
             // 调试日志
             console.log('Sending video with return_video=true');
             console.log('File:', currentFile.name, 'Size:', currentFile.size);
+            console.log('Settings:', settings);
 
             try {
                 const response = await fetch('/api/v1/video', {
@@ -1088,16 +1293,16 @@
         function displayResults(data) {
             updateStats(data);
 
-            // 人员列表
-            const personList = document.getElementById('personList');
-            if (data.persons && data.persons.length > 0) {
-                personList.innerHTML = data.persons.map((person, index) => `
-                    <div class="person-item">
-                        <strong>人员 #${index + 1}</strong>
+            // 物体列表
+            const objectList = document.getElementById('objectList');
+            if (data.objects && data.objects.length > 0) {
+                objectList.innerHTML = data.objects.map((obj, index) => `
+                    <div class="object-item">
+                        <strong>${obj.class_name || '物体'} #${index + 1}</strong>
                         <div style="margin-top: 8px; color: #666; font-size: 14px;">
-                            位置: (${person.bbox.x1}, ${person.bbox.y1}) - (${person.bbox.x2}, ${person.bbox.y2})<br>
-                            大小: ${person.bbox.width}×${person.bbox.height}<br>
-                            置信度: ${(person.confidence * 100).toFixed(1)}%
+                            位置: (${obj.bbox.x1}, ${obj.bbox.y1}) - (${obj.bbox.x2}, ${obj.bbox.y2})<br>
+                            大小: ${obj.bbox.width}×${obj.bbox.height}<br>
+                            置信度: ${(obj.confidence * 100).toFixed(1)}%
                         </div>
                     </div>
                 `).join('');
@@ -1108,8 +1313,8 @@
                     previewImage.src = data.annotated_image;
                 }
             } else {
-                personList.innerHTML = '<p style="text-align: center; color: #666;">未检测到人员</p>';
-                // 如果没有检测到人但有带框图像，则显示带框图像
+                objectList.innerHTML = '<p style="text-align: center; color: #666;">未检测到物体</p>';
+                // 如果没有检测到但有带框图像，则显示带框图像
                 if (data.annotated_image) {
                     previewImage.src = data.annotated_image;
                 }
@@ -1121,8 +1326,8 @@
         function updateStats(data) {
             document.getElementById('stats').innerHTML = `
                 <div class="stat-card">
-                    <div class="stat-value">${data.person_count || 0}</div>
-                    <div class="stat-label">检测到人数</div>
+                    <div class="stat-value">${data.object_count || 0}</div>
+                    <div class="stat-label">检测到物体数</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">${data.inference_time_ms || 0}ms</div>

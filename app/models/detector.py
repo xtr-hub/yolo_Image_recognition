@@ -395,10 +395,25 @@ class ObjectsDetector:
             cap.release()
             return {"success": False, "error": str(e)}
 
-    def process_video_file(self, video_path: str, output_path: str = None,
-                          classes: Optional[Union[List[int], List[str]]] = None) -> Dict:
+    def process_video_file(
+        self,
+        video_path: str,
+        output_path: str = None,
+        classes: Optional[Union[List[int], List[str]]] = None,
+        use_batch_processing: bool = True,
+        batch_size: int = 8,
+        frame_interval: int = 1
+    ) -> Dict:
         """
         处理视频文件，逐帧检测
+
+        Args:
+            video_path: 视频文件路径
+            output_path: 输出文件路径（可选）
+            classes: 要检测的类别
+            use_batch_processing: 是否使用批处理优化
+            batch_size: 批处理大小
+            frame_interval: 帧处理间隔（1=每帧处理，2=隔帧处理）
         """
         cap = cv2.VideoCapture(video_path)
 
@@ -418,6 +433,7 @@ class ObjectsDetector:
         print(f"处理视频：{width}x{height} @ {fps}fps, 总帧数：{total_frames}")
         print(f"原视频编码：{original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
         print(f"output_path: {output_path}")
+        print(f"批处理：{use_batch_processing}, batch_size: {batch_size}, frame_interval: {frame_interval}")
 
         writer = None
         if output_path:
@@ -439,49 +455,136 @@ class ObjectsDetector:
         frame_count = 0
         written_frames = 0
 
+        # 批处理相关变量
+        frame_buffer = []
+        frame_indices = []
+
         try:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
+            if use_batch_processing:
+                # 批处理模式
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
 
-                result = self.detect_objects(frame, return_annotated=True, classes=classes)
+                    if frame_count % frame_interval == 0:
+                        frame_buffer.append(frame)
+                        frame_indices.append(frame_count)
 
-                if writer:
-                    try:
-                        if result.get("annotated_image") is not None:
+                        # 当缓冲区满或到达视频末尾时进行处理
+                        if len(frame_buffer) >= batch_size:
+                            batch_results = self._process_video_frame_batch(
+                                frame_buffer,
+                                classes=classes,
+                                return_annotated=(writer is not None)
+                            )
+
+                            for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
+                                frame_num = frame_indices[idx]
+
+                                if writer and result.get("annotated_image") is not None:
+                                    annotated_frame = result["annotated_image"]
+                                    if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+                                        annotated_frame = cv2.resize(annotated_frame, (width, height))
+                                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                                    writer.append_data(rgb_frame)
+                                    written_frames += 1
+
+                                if result["object_count"] > 0:
+                                    frame_results.append({
+                                        "frame": frame_num,
+                                        "timestamp": round(frame_num / fps, 2),
+                                        "object_count": result["object_count"],
+                                        "objects": result["objects"]
+                                    })
+
+                            # 清空缓冲区
+                            frame_buffer.clear()
+                            frame_indices.clear()
+
+                            if written_frames % 30 == 0:
+                                print(f"已写入 {written_frames} 帧")
+
+                    frame_count += 1
+
+                    if frame_count % 30 == 0:
+                        progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+                        print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
+
+                # 处理剩余帧
+                if frame_buffer:
+                    batch_results = self._process_video_frame_batch(
+                        frame_buffer,
+                        classes=classes,
+                        return_annotated=(writer is not None)
+                    )
+
+                    for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
+                        frame_num = frame_indices[idx]
+
+                        if writer and result.get("annotated_image") is not None:
                             annotated_frame = result["annotated_image"]
-                        else:
-                            annotated_frame = frame
+                            if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+                                annotated_frame = cv2.resize(annotated_frame, (width, height))
+                            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                            writer.append_data(rgb_frame)
+                            written_frames += 1
 
-                        if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
-                            annotated_frame = cv2.resize(annotated_frame, (width, height))
+                        if result["object_count"] > 0:
+                            frame_results.append({
+                                "frame": frame_num,
+                                "timestamp": round(frame_num / fps, 2),
+                                "object_count": result["object_count"],
+                                "objects": result["objects"]
+                            })
 
-                        rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                        writer.append_data(rgb_frame)
-                        written_frames += 1
+                    frame_buffer.clear()
+                    frame_indices.clear()
 
-                        if written_frames % 30 == 0:
-                            print(f"已写入 {written_frames} 帧，当前帧尺寸：{rgb_frame.shape}")
+            else:
+                # 单帧处理模式（向后兼容）
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
 
-                    except Exception as e:
-                        print(f"写入帧 {frame_count} 失败：{e}")
-                        import traceback
-                        traceback.print_exc()
+                    result = self.detect_objects(frame, return_annotated=True, classes=classes)
 
-                if result["object_count"] > 0:
-                    frame_results.append({
-                        "frame": frame_count,
-                        "timestamp": round(frame_count / fps, 2),
-                        "object_count": result["object_count"],
-                        "objects": result["objects"]
-                    })
+                    if writer:
+                        try:
+                            if result.get("annotated_image") is not None:
+                                annotated_frame = result["annotated_image"]
+                            else:
+                                annotated_frame = frame
 
-                frame_count += 1
+                            if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+                                annotated_frame = cv2.resize(annotated_frame, (width, height))
 
-                if frame_count % 30 == 0:
-                    progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
-                    print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
+                            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                            writer.append_data(rgb_frame)
+                            written_frames += 1
+
+                            if written_frames % 30 == 0:
+                                print(f"已写入 {written_frames} 帧，当前帧尺寸：{rgb_frame.shape}")
+
+                        except Exception as e:
+                            print(f"写入帧 {frame_count} 失败：{e}")
+                            import traceback
+                            traceback.print_exc()
+
+                    if result["object_count"] > 0:
+                        frame_results.append({
+                            "frame": frame_count,
+                            "timestamp": round(frame_count / fps, 2),
+                            "object_count": result["object_count"],
+                            "objects": result["objects"]
+                        })
+
+                    frame_count += 1
+
+                    if frame_count % 30 == 0:
+                        progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+                        print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
 
         finally:
             cap.release()
@@ -515,8 +618,88 @@ class ObjectsDetector:
             "duration": round(frame_count / fps, 2) if fps > 0 else 0,
             "resolution": {"width": width, "height": height},
             "frames_with_detection": len(frame_results),
-            "frames": frame_results
+            "frames": frame_results,
+            "batch_processing_used": use_batch_processing
         }
+
+    def _process_video_frame_batch(
+        self,
+        frames: List[np.ndarray],
+        classes: Optional[Union[List[int], List[str]]] = None,
+        return_annotated: bool = True
+    ) -> List[Dict]:
+        """
+        批量处理视频帧
+
+        Args:
+            frames: 视频帧列表
+            classes: 要检测的类别
+            return_annotated: 是否返回标注图像
+
+        Returns:
+            检测结果列表
+        """
+        if not frames:
+            return []
+
+        if not self.model_loaded:
+            raise Exception("Model not loaded. Please load the model first.")
+
+        class_ids = self._parse_classes(classes)
+
+        predict_kwargs = {
+            'conf': 0.5,
+            'device': self.device,
+            'verbose': False
+        }
+        if class_ids is not None:
+            predict_kwargs['classes'] = class_ids
+
+        # 使用 YOLO 的批量预测功能
+        batch_results = self.model.predict(frames, **predict_kwargs)
+
+        results = []
+        for i, result in enumerate(batch_results):
+            objects = []
+            if result.boxes is not None:
+                for box in result.boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    confidence = float(box.conf[0])
+                    class_id = int(box.cls[0])
+                    class_name = COCO_CLASSES.get(class_id, f'unknown_{class_id}')
+
+                    objects.append(
+                        {
+                            "bbox": {
+                                "x1": int(x1),
+                                "y1": int(y1),
+                                "x2": int(x2),
+                                "y2": int(y2),
+                                "width": int(x2 - x1),
+                                "height": int(y2 - y1)
+                            },
+                            "confidence": round(confidence, 3),
+                            "class_id": class_id,
+                            "class_name": class_name
+                        }
+                    )
+
+            annotated_image = None
+            if return_annotated:
+                annotated_image = result.plot() if len(result.boxes) > 0 else frames[i].copy()
+
+            results.append({
+                "success": True,
+                "object_count": len(objects),
+                "objects": objects,
+                "image_shape": {
+                    "height": frames[i].shape[0],
+                    "width": frames[i].shape[1]
+                },
+                "annotated_image": annotated_image
+            })
+
+        return results
 
 
 # 全局实例

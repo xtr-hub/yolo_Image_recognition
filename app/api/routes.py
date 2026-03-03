@@ -13,12 +13,14 @@ router = APIRouter()
 @router.post("/detect")
 async def detect(
     file: UploadFile = File(...),
-    classes: Optional[str] = Query(None, description="要检测的类别，逗号分隔，例如 'person' 或 'person,car'")
+    classes: Optional[str] = Query(None, description="要检测的类别，逗号分隔，例如 'person' 或 'person,car'"),
+    conf_threshold: float = Query(0.5, ge=0.1, le=0.9, description="置信度阈值")
 ):
     """
     单张图片物体检测
     - file: 图片文件
     - classes: 要检测的类别，逗号分隔，例如 'person' 或 'person,car'。不传则检测所有 80 个类别
+    - conf_threshold: 置信度阈值，默认 0.5
     """
     contents = await file.read()
 
@@ -33,7 +35,7 @@ async def detect(
     if classes:
         class_list = [c.strip() for c in classes.split(',')]
 
-    result = detector.detect_objects(image, return_annotated=True, classes=class_list)
+    result = detector.detect_objects(image, return_annotated=True, classes=class_list, conf_threshold=conf_threshold)
 
     if result.get("annotated_image") is not None:
         _, buffer = cv2.imencode('.jpg', result["annotated_image"])
@@ -47,13 +49,19 @@ async def detect(
 async def detect_video(
     file: UploadFile = File(...),
     return_video: str = "true",
-    classes: Optional[str] = Query(None, description="要检测的类别，逗号分隔")
+    classes: Optional[str] = Query(None, description="要检测的类别，逗号分隔"),
+    use_batch_processing: bool = Query(True, description="是否使用批处理优化"),
+    batch_size: int = Query(8, ge=1, le=32, description="批处理大小"),
+    frame_interval: int = Query(1, ge=1, le=5, description="帧处理间隔")
 ):
     """
     上传视频文件进行检测
     - file: 视频文件
     - return_video: 是否返回处理后的视频文件 ("true" 或 "false")
     - classes: 要检测的类别，逗号分隔，例如 'person' 或 'person,car'
+    - use_batch_processing: 是否使用批处理优化
+    - batch_size: 批处理大小 (1-32)
+    - frame_interval: 帧处理间隔 (1=每帧处理，2=隔帧处理)
     """
     import tempfile
     import os
@@ -62,6 +70,7 @@ async def detect_video(
     should_return_video = return_video.lower() == "true"
     print(f"接收到的 return_video 参数：{return_video}")
     print(f"转换后的布尔值：{should_return_video}")
+    print(f"批处理参数：use_batch_processing={use_batch_processing}, batch_size={batch_size}, frame_interval={frame_interval}")
 
     input_path = None
     output_path = None
@@ -88,7 +97,14 @@ async def detect_video(
         else:
             print(f"不返回视频，output_path 保持为 None")
 
-        result = detector.process_video_file(input_path, output_path, classes=class_list)
+        result = detector.process_video_file(
+            input_path,
+            output_path,
+            classes=class_list,
+            use_batch_processing=use_batch_processing,
+            batch_size=batch_size,
+            frame_interval=frame_interval
+        )
 
         if should_return_video and output_path and os.path.exists(output_path):
             file_size = os.path.getsize(output_path)
@@ -148,12 +164,28 @@ async def detect_video(
 
 @router.get("/health")
 async def health_check():
+    from app.utils.batch_processor import get_batch_processor, BatchConfig
+    from app.core.config import BATCH_PROCESSING
+
+    # 获取批处理器性能统计
+    try:
+        batch_processor = get_batch_processor(detector, BatchConfig(
+            batch_size=BATCH_PROCESSING["default_batch_size"],
+            max_workers=BATCH_PROCESSING["default_max_workers"],
+            memory_threshold=BATCH_PROCESSING["memory_threshold"]
+        ))
+        perf_stats = batch_processor.get_performance_stats()
+    except Exception as e:
+        perf_stats = {"error": str(e)}
+
     return {
         "status": "healthy",
         "model_loaded": detector.model_loaded,
         "device": detector.device if detector.model_loaded else None,
         "batch_processing_enabled": True,
-        "supported_classes": list(COCO_CLASSES.values())
+        "batch_processing_config": BATCH_PROCESSING,
+        "supported_classes": list(COCO_CLASSES.values()),
+        "performance_stats": perf_stats
     }
 
 
@@ -210,7 +242,7 @@ async def batch_detect(
             successful_results = []
             failed_count = len(saved_paths) - len(images)
 
-            for i, (result, original_path) in enumerate(zip(results, saved_paths[:len(results)])):
+            for result, original_path in zip(results, saved_paths[:len(results)]):
                 result["input_path"] = original_path
                 successful_results.append(result)
 
@@ -274,7 +306,7 @@ async def batch_detect_with_progress(
             successful_results = []
             failed_count = len(saved_paths) - len(images)
 
-            for i, (result, original_path) in enumerate(zip(results, saved_paths[:len(results)])):
+            for result, original_path in zip(results, saved_paths[:len(results)]):
                 result["input_path"] = original_path
                 successful_results.append(result)
 
