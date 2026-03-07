@@ -1238,7 +1238,7 @@
         let lastSentTime = 0;
         let displayLastFrameTime = Date.now();
         let smoothedFps = 25; // 初始值设为期望的FPS
-        const FRAME_INTERVAL = 100; // 降低到10FPS以匹配服务器处理能力
+        const FRAME_INTERVAL = 20; // 降低到10FPS以匹配服务器处理能力
 
         function sendFrame() {
             const now = Date.now();
