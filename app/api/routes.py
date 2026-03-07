@@ -97,7 +97,7 @@ async def detect_video(
         else:
             print(f"不返回视频，output_path 保持为 None")
 
-        result = detector.process_video_file(
+        result = detector.process_video_file_track(
             input_path,
             output_path,
             classes=class_list,

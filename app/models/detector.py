@@ -11,7 +11,7 @@ import psutil
 import gc
 
 # 默认模型，可通过环境变量覆盖
-DEFAULT_MODEL = os.getenv('YOLO_MODEL', 'yolov8s')
+DEFAULT_MODEL = os.getenv('YOLO_MODEL', 'yolov8n')
 
 # COCO 数据集的 80 个类别
 COCO_CLASSES = {
@@ -620,6 +620,192 @@ class ObjectsDetector:
             "frames_with_detection": len(frame_results),
             "frames": frame_results,
             "batch_processing_used": use_batch_processing
+        }
+    def process_video_file_track(
+            self,
+            video_path: str,
+            output_path: str = None,
+            classes: Optional[Union[List[int], List[str]]] = None,
+            use_batch_processing: bool = True,
+            batch_size: int = 8,
+            frame_interval: int = 1,
+            conf: Optional[float] = 0.5,
+        ) -> Dict:
+        """
+        处理视频文件（跟踪模式）
+
+        Args:
+            video_path: 视频文件路径
+            output_path: 输出文件路径
+            classes: 要检测的类别
+            use_batch_processing: 是否使用批处理优化
+            batch_size: 批处理大小
+            frame_interval: 帧处理间隔
+
+        Returns:
+            处理结果
+        """
+
+        try:
+            # 使用opencv获取视频信息
+            cap = cv2.VideoCapture(video_path)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            original_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+
+            print(f"处理视频：{width}x{height} @ {fps}fps, 总帧数：{total_frames}")
+            print(f"原视频编码：{original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
+            print(f"output_path: {output_path}")
+            print(f"批处理：{use_batch_processing}, batch_size: {batch_size}, frame_interval: {frame_interval}")
+
+            # 创建视频写入器
+            writer = None
+            if output_path:
+                print(f"使用 imageio 创建视频写入器...")
+                try:
+                    writer = imageio.get_writer(
+                        output_path,
+                        fps=fps,
+                        codec='libx264'
+                    )
+                    print(f"imageio 写入器创建成功")
+                except Exception as e:
+                    print(f"无法创建视频写入器：{e}")
+                    import traceback
+                    traceback.print_exc()
+                    writer = None
+
+            # classes转为id
+            class_ids = self._parse_classes(classes)
+            
+            # 处理视频文件(流处理)
+            results = self.model.track(
+                source=video_path,  # 视频文件路径
+                persist=True,       # 是否保存跟踪结果
+                conf=conf,          # 置信度
+                classes=class_ids,  # 要检测的类别
+                stream=True,         # 是否流处理
+            )
+    
+            # 结果帧列表
+            frame_results = []
+
+            # 帧计数器
+            frame_count = 0
+            # dict字典存出现过的类别和数量
+            class_counts = {}
+
+            # set集合存出现的id
+            class_ids = set()
+            
+            for result in results:
+
+                objects = []
+                
+                # 根据id判断当前的物品是不是重复的
+                for box in result.boxes:
+
+                    # 获取框信息
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    confidence = float(box.conf[0])
+                    class_id = int(box.cls[0])
+                    class_name = COCO_CLASSES.get(class_id, f'unknown_{class_id}')
+
+                    # 添加id
+                    if class_id not in class_ids:
+                        class_counts[class_id] = class_counts.get(class_id, 0) + 1
+                        class_ids.add(class_id)
+
+                    objects.append(
+                        {
+                            "bbox": {
+                                "x1": int(x1),
+                                "y1": int(y1),
+                                "x2": int(x2),
+                                "y2": int(y2),
+                                "width": int(x2 - x1),
+                                "height": int(y2 - y1)
+                            },
+                            "confidence": round(confidence, 3),
+                            "class_id": class_id,
+                            "class_name": class_name
+                        }
+                    )
+            
+                # 获取图像
+                written_frame = 0
+                if writer:
+                    frame_result = result.plot(
+                        conf=True,      # 显示置信度
+                        labels=True,    # 显示标签
+                        boxes=True,     # 显示框
+                        probs=True,     # 显示概率
+                        line_width=2,   # 线宽
+                        font_size=12,   # 字体大小
+                    )
+                    try:
+                        if frame_result is not None:
+                            if frame_result.shape[1] != width or frame_result.shape[0] != height:
+                                frame_result = cv2.resize(frame_result, (width, height))
+
+                            rgb_frame = cv2.cvtColor(frame_result, cv2.COLOR_BGR2RGB)
+                            writer.append_data(rgb_frame)
+                            written_frame += 1
+
+                            if written_frame % 30 == 0:
+                                print(f"已写入 {written_frame} 帧, 当前帧尺寸: {rgb_frame.shape}")
+                        
+                    except Exception as e:
+                        print(f"写入帧 {frame_count} 失败：{e}")
+                        import traceback
+                        traceback.print_exc()
+                frame_results.append({
+                    "frame": frame_count,
+                    "timestamp": round(frame_count / fps, 2),
+                    "object_count": len(objects),
+                    "objects": objects
+                })
+                
+                # 帧计数器更新
+                frame_count += 1
+
+        finally:
+            cap.release()
+            if writer: 
+                writer.close()
+                print("视频写入器已关闭")
+            
+        if output_path:
+            if os.path.exists(output_path):
+                file_size = os.path.getsize(output_path) / (1024 * 1024)
+                print(f"视频处理完成：共处理 {frame_count} 帧，成功写入 {written_frame} 帧")
+                print(f"输出文件：{output_path}")
+                print(f"文件大小：{file_size:.2f} MB")
+
+                try:
+                    test_reader = imageio.get_reader(output_path)
+                    test_frame = test_reader.get_data(0)
+                    test_reader.close()
+                    print(f"视频文件可正常读取，第一帧尺寸：{test_frame.shape}")
+                except Exception as e:
+                    print(f"视频文件无法读取：{e}")
+            else:
+                print(f"错误：输出文件不存在!")
+        else:
+            print(f"视频分析完成：共处理 {frame_count} 帧")
+
+        return {
+            "total_frames": total_frames,
+            "processed_frames": frame_count,
+            "fps": fps,
+            "duration": round(frame_count / fps, 2) if fps > 0 else 0,
+            "resolution": {"width": width, "height": height},
+            "frames_with_detection": len(frame_results),
+            "frames": frame_results,
+            "batch_processing_used": use_batch_processing,
+            "class_counts": class_counts
         }
 
     def _process_video_frame_batch(
