@@ -223,33 +223,33 @@ class ObjectsDetector:
             "annotated_image": annotated_image
         }
 
-    def batch_detect_objects(
-        self,
-        images: List[np.ndarray],
-        return_annotated: bool = False,
-        classes: Optional[Union[List[int], List[str]]] = None,
-        conf_threshold: float = 0.5
-    ) -> List[Dict]:
-        """
-        批量检测多张图像中的物体
-        :param images: 图像列表
-        :param return_annotated: 是否返回标注后的图像
-        :param classes: 要检测的类别列表
-        :param conf_threshold: 置信度阈值
-        :return: 检测结果列表
-        """
-        if not self.model_loaded:
-            raise Exception("Model not loaded. Please load the model first.")
+    # def batch_detect_objects(
+    #     self,
+    #     images: List[np.ndarray],
+    #     return_annotated: bool = False,
+    #     classes: Optional[Union[List[int], List[str]]] = None,
+    #     conf_threshold: float = 0.5
+    # ) -> List[Dict]:
+    #     """
+    #     批量检测多张图像中的物体
+    #     :param images: 图像列表
+    #     :param return_annotated: 是否返回标注后的图像
+    #     :param classes: 要检测的类别列表
+    #     :param conf_threshold: 置信度阈值
+    #     :return: 检测结果列表
+    #     """
+    #     if not self.model_loaded:
+    #         raise Exception("Model not loaded. Please load the model first.")
 
-        if not images:
-            return []
+    #     if not images:
+    #         return []
 
-        results = []
-        for image in images:
-            result = self.detect_objects(image, return_annotated, classes, conf_threshold)
-            results.append(result)
+    #     results = []
+    #     for image in images:
+    #         result = self.detect_objects(image, return_annotated, classes, conf_threshold)
+    #         results.append(result)
 
-        return results
+    #     return results
 
     def batch_predict_optimized(
         self,
@@ -395,232 +395,233 @@ class ObjectsDetector:
             cap.release()
             return {"success": False, "error": str(e)}
 
-    def process_video_file(
-        self,
-        video_path: str,
-        output_path: str = None,
-        classes: Optional[Union[List[int], List[str]]] = None,
-        use_batch_processing: bool = True,
-        batch_size: int = 8,
-        frame_interval: int = 1
-    ) -> Dict:
-        """
-        处理视频文件，逐帧检测
+    # def process_video_file(
+    #     self,
+    #     video_path: str,
+    #     output_path: str = None,
+    #     classes: Optional[Union[List[int], List[str]]] = None,
+    #     use_batch_processing: bool = True,
+    #     batch_size: int = 8,
+    #     frame_interval: int = 1
+    # ) -> Dict:
+    #     """
+    #     处理视频文件，逐帧检测
 
-        Args:
-            video_path: 视频文件路径
-            output_path: 输出文件路径（可选）
-            classes: 要检测的类别
-            use_batch_processing: 是否使用批处理优化
-            batch_size: 批处理大小
-            frame_interval: 帧处理间隔（1=每帧处理，2=隔帧处理）
-        """
-        cap = cv2.VideoCapture(video_path)
+    #     Args:
+    #         video_path: 视频文件路径
+    #         output_path: 输出文件路径（可选）
+    #         classes: 要检测的类别
+    #         use_batch_processing: 是否使用批处理优化
+    #         batch_size: 批处理大小
+    #         frame_interval: 帧处理间隔（1=每帧处理，2=隔帧处理）
+    #     """
+    #     cap = cv2.VideoCapture(video_path)
 
-        if not cap.isOpened():
-            raise RuntimeError(f"无法打开视频文件：{video_path}")
+    #     if not cap.isOpened():
+    #         raise RuntimeError(f"无法打开视频文件：{video_path}")
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps == 0:
-            fps = 30
+    #     fps = cap.get(cv2.CAP_PROP_FPS)
+    #     if fps == 0:
+    #         fps = 30
 
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    #     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    #     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    #     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        original_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+    #     original_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
 
-        print(f"处理视频：{width}x{height} @ {fps}fps, 总帧数：{total_frames}")
-        print(f"原视频编码：{original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
-        print(f"output_path: {output_path}")
-        print(f"批处理：{use_batch_processing}, batch_size: {batch_size}, frame_interval: {frame_interval}")
+    #     print(f"处理视频：{width}x{height} @ {fps}fps, 总帧数：{total_frames}")
+    #     print(f"原视频编码：{original_fourcc} ({self._fourcc_to_str(original_fourcc)})")
+    #     print(f"output_path: {output_path}")
+    #     print(f"批处理：{use_batch_processing}, batch_size: {batch_size}, frame_interval: {frame_interval}")
 
-        writer = None
-        if output_path:
-            print(f"使用 imageio 创建视频写入器...")
-            try:
-                writer = imageio.get_writer(
-                    output_path,
-                    fps=fps,
-                    codec='libx264'
-                )
-                print(f"imageio 写入器创建成功")
-            except Exception as e:
-                print(f"无法创建视频写入器：{e}")
-                import traceback
-                traceback.print_exc()
-                writer = None
+    #     writer = None
+    #     if output_path:
+    #         print(f"使用 imageio 创建视频写入器...")
+    #         try:
+    #             writer = imageio.get_writer(
+    #                 output_path,
+    #                 fps=fps,
+    #                 codec='libx264'
+    #             )
+    #             print(f"imageio 写入器创建成功")
+    #         except Exception as e:
+    #             print(f"无法创建视频写入器：{e}")
+    #             import traceback
+    #             traceback.print_exc()
+    #             writer = None
 
-        frame_results = []
-        frame_count = 0
-        written_frames = 0
+    #     frame_results = []
+    #     frame_count = 0
+    #     written_frames = 0
 
-        # 批处理相关变量
-        frame_buffer = []
-        frame_indices = []
+    #     # 批处理相关变量
+    #     frame_buffer = []
+    #     frame_indices = []
 
-        try:
-            if use_batch_processing:
-                # 批处理模式
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
+    #     try:
+    #         if use_batch_processing:
+    #             # 批处理模式
+    #             while True:
+    #                 ret, frame = cap.read()
+    #                 if not ret:
+    #                     break
 
-                    if frame_count % frame_interval == 0:
-                        frame_buffer.append(frame)
-                        frame_indices.append(frame_count)
+    #                 if frame_count % frame_interval == 0:
+    #                     frame_buffer.append(frame)
+    #                     frame_indices.append(frame_count)
 
-                        # 当缓冲区满或到达视频末尾时进行处理
-                        if len(frame_buffer) >= batch_size:
-                            batch_results = self._process_video_frame_batch(
-                                frame_buffer,
-                                classes=classes,
-                                return_annotated=(writer is not None)
-                            )
+    #                     # 当缓冲区满或到达视频末尾时进行处理
+    #                     if len(frame_buffer) >= batch_size:
+    #                         batch_results = self._process_video_frame_batch(
+    #                             frame_buffer,
+    #                             classes=classes,
+    #                             return_annotated=(writer is not None)
+    #                         )
 
-                            for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
-                                frame_num = frame_indices[idx]
+    #                         for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
+    #                             frame_num = frame_indices[idx]
 
-                                if writer and result.get("annotated_image") is not None:
-                                    annotated_frame = result["annotated_image"]
-                                    if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
-                                        annotated_frame = cv2.resize(annotated_frame, (width, height))
-                                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                                    writer.append_data(rgb_frame)
-                                    written_frames += 1
+    #                             if writer and result.get("annotated_image") is not None:
+    #                                 annotated_frame = result["annotated_image"]
+    #                                 if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+    #                                     annotated_frame = cv2.resize(annotated_frame, (width, height))
+    #                                 rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+    #                                 writer.append_data(rgb_frame)
+    #                                 written_frames += 1
 
-                                if result["object_count"] > 0:
-                                    frame_results.append({
-                                        "frame": frame_num,
-                                        "timestamp": round(frame_num / fps, 2),
-                                        "object_count": result["object_count"],
-                                        "objects": result["objects"]
-                                    })
+    #                             if result["object_count"] > 0:
+    #                                 frame_results.append({
+    #                                     "frame": frame_num,
+    #                                     "timestamp": round(frame_num / fps, 2),
+    #                                     "object_count": result["object_count"],
+    #                                     "objects": result["objects"]
+    #                                 })
 
-                            # 清空缓冲区
-                            frame_buffer.clear()
-                            frame_indices.clear()
+    #                         # 清空缓冲区
+    #                         frame_buffer.clear()
+    #                         frame_indices.clear()
 
-                            if written_frames % 30 == 0:
-                                print(f"已写入 {written_frames} 帧")
+    #                         if written_frames % 30 == 0:
+    #                             print(f"已写入 {written_frames} 帧")
 
-                    frame_count += 1
+    #                 frame_count += 1
 
-                    if frame_count % 30 == 0:
-                        progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
-                        print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
+    #                 if frame_count % 30 == 0:
+    #                     progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+    #                     print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
 
-                # 处理剩余帧
-                if frame_buffer:
-                    batch_results = self._process_video_frame_batch(
-                        frame_buffer,
-                        classes=classes,
-                        return_annotated=(writer is not None)
-                    )
+    #             # 处理剩余帧
+    #             if frame_buffer:
+    #                 batch_results = self._process_video_frame_batch(
+    #                     frame_buffer,
+    #                     classes=classes,
+    #                     return_annotated=(writer is not None)
+    #                 )
 
-                    for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
-                        frame_num = frame_indices[idx]
+    #                 for idx, (result, original_frame) in enumerate(zip(batch_results, frame_buffer)):
+    #                     frame_num = frame_indices[idx]
 
-                        if writer and result.get("annotated_image") is not None:
-                            annotated_frame = result["annotated_image"]
-                            if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
-                                annotated_frame = cv2.resize(annotated_frame, (width, height))
-                            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                            writer.append_data(rgb_frame)
-                            written_frames += 1
+    #                     if writer and result.get("annotated_image") is not None:
+    #                         annotated_frame = result["annotated_image"]
+    #                         if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+    #                             annotated_frame = cv2.resize(annotated_frame, (width, height))
+    #                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+    #                         writer.append_data(rgb_frame)
+    #                         written_frames += 1
 
-                        if result["object_count"] > 0:
-                            frame_results.append({
-                                "frame": frame_num,
-                                "timestamp": round(frame_num / fps, 2),
-                                "object_count": result["object_count"],
-                                "objects": result["objects"]
-                            })
+    #                     if result["object_count"] > 0:
+    #                         frame_results.append({
+    #                             "frame": frame_num,
+    #                             "timestamp": round(frame_num / fps, 2),
+    #                             "object_count": result["object_count"],
+    #                             "objects": result["objects"]
+    #                         })
 
-                    frame_buffer.clear()
-                    frame_indices.clear()
+    #                 frame_buffer.clear()
+    #                 frame_indices.clear()
 
-            else:
-                # 单帧处理模式（向后兼容）
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
+    #         else:
+    #             # 单帧处理模式（向后兼容）
+    #             while True:
+    #                 ret, frame = cap.read()
+    #                 if not ret:
+    #                     break
 
-                    result = self.detect_objects(frame, return_annotated=True, classes=classes)
+    #                 result = self.detect_objects(frame, return_annotated=True, classes=classes)
 
-                    if writer:
-                        try:
-                            if result.get("annotated_image") is not None:
-                                annotated_frame = result["annotated_image"]
-                            else:
-                                annotated_frame = frame
+    #                 if writer:
+    #                     try:
+    #                         if result.get("annotated_image") is not None:
+    #                             annotated_frame = result["annotated_image"]
+    #                         else:
+    #                             annotated_frame = frame
 
-                            if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
-                                annotated_frame = cv2.resize(annotated_frame, (width, height))
+    #                         if annotated_frame.shape[1] != width or annotated_frame.shape[0] != height:
+    #                             annotated_frame = cv2.resize(annotated_frame, (width, height))
 
-                            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                            writer.append_data(rgb_frame)
-                            written_frames += 1
+    #                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+    #                         writer.append_data(rgb_frame)
+    #                         written_frames += 1
 
-                            if written_frames % 30 == 0:
-                                print(f"已写入 {written_frames} 帧，当前帧尺寸：{rgb_frame.shape}")
+    #                         if written_frames % 30 == 0:
+    #                             print(f"已写入 {written_frames} 帧，当前帧尺寸：{rgb_frame.shape}")
 
-                        except Exception as e:
-                            print(f"写入帧 {frame_count} 失败：{e}")
-                            import traceback
-                            traceback.print_exc()
+    #                     except Exception as e:
+    #                         print(f"写入帧 {frame_count} 失败：{e}")
+    #                         import traceback
+    #                         traceback.print_exc()
 
-                    if result["object_count"] > 0:
-                        frame_results.append({
-                            "frame": frame_count,
-                            "timestamp": round(frame_count / fps, 2),
-                            "object_count": result["object_count"],
-                            "objects": result["objects"]
-                        })
+    #                 if result["object_count"] > 0:
+    #                     frame_results.append({
+    #                         "frame": frame_count,
+    #                         "timestamp": round(frame_count / fps, 2),
+    #                         "object_count": result["object_count"],
+    #                         "objects": result["objects"]
+    #                     })
 
-                    frame_count += 1
+    #                 frame_count += 1
 
-                    if frame_count % 30 == 0:
-                        progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
-                        print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
+    #                 if frame_count % 30 == 0:
+    #                     progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+    #                     print(f"处理进度：{frame_count}/{total_frames} ({progress:.1f}%)")
 
-        finally:
-            cap.release()
-            if writer:
-                writer.close()
-                print("视频写入器已关闭")
+    #     finally:
+    #         cap.release()
+    #         if writer:
+    #             writer.close()
+    #             print("视频写入器已关闭")
 
-        if output_path:
-            if os.path.exists(output_path):
-                file_size = os.path.getsize(output_path) / (1024 * 1024)
-                print(f"视频处理完成：共处理 {frame_count} 帧，成功写入 {written_frames} 帧")
-                print(f"输出文件：{output_path}")
-                print(f"文件大小：{file_size:.2f} MB")
+    #     if output_path:
+    #         if os.path.exists(output_path):
+    #             file_size = os.path.getsize(output_path) / (1024 * 1024)
+    #             print(f"视频处理完成：共处理 {frame_count} 帧，成功写入 {written_frames} 帧")
+    #             print(f"输出文件：{output_path}")
+    #             print(f"文件大小：{file_size:.2f} MB")
 
-                try:
-                    test_reader = imageio.get_reader(output_path)
-                    test_frame = test_reader.get_data(0)
-                    test_reader.close()
-                    print(f"视频文件可正常读取，第一帧尺寸：{test_frame.shape}")
-                except Exception as e:
-                    print(f"视频文件无法读取：{e}")
-            else:
-                print(f"错误：输出文件不存在!")
-        else:
-            print(f"视频分析完成：共处理 {frame_count} 帧")
+    #             try:
+    #                 test_reader = imageio.get_reader(output_path)
+    #                 test_frame = test_reader.get_data(0)
+    #                 test_reader.close()
+    #                 print(f"视频文件可正常读取，第一帧尺寸：{test_frame.shape}")
+    #             except Exception as e:
+    #                 print(f"视频文件无法读取：{e}")
+    #         else:
+    #             print(f"错误：输出文件不存在!")
+    #     else:
+    #         print(f"视频分析完成：共处理 {frame_count} 帧")
 
-        return {
-            "total_frames": total_frames,
-            "processed_frames": frame_count,
-            "fps": fps,
-            "duration": round(frame_count / fps, 2) if fps > 0 else 0,
-            "resolution": {"width": width, "height": height},
-            "frames_with_detection": len(frame_results),
-            "frames": frame_results,
-            "batch_processing_used": use_batch_processing
-        }
+    #     return {
+    #         "total_frames": total_frames,
+    #         "processed_frames": frame_count,
+    #         "fps": fps,
+    #         "duration": round(frame_count / fps, 2) if fps > 0 else 0,
+    #         "resolution": {"width": width, "height": height},
+    #         "frames_with_detection": len(frame_results),
+    #         "frames": frame_results,
+    #         "batch_processing_used": use_batch_processing
+    #     }
+
     def process_video_file_track(
             self,
             video_path: str,

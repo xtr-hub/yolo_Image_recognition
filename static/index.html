@@ -482,7 +482,6 @@
                 <h3 style="margin-bottom: 15px;">检测结果</h3>
                 <div class="image-container">
                     <img id="previewImage" alt="预览">
-                    <canvas id="canvas"></canvas>
                 </div>
                 <div style="margin-top: 15px; text-align: center;" id="imageControls">
                     <button class="btn" id="detectBtn">🔍 开始检测</button>
@@ -539,7 +538,6 @@
         const videoInput = document.getElementById('videoInput');
         const previewSection = document.getElementById('previewSection');
         const previewImage = document.getElementById('previewImage');
-        const canvas = document.getElementById('canvas');
         const cameraVideo = document.getElementById('cameraVideo');
         const videoPreview = document.getElementById('videoPreview');
         const detectBtn = document.getElementById('detectBtn');
@@ -738,7 +736,6 @@
             previewSection.classList.remove('active');
             resultSection.classList.remove('active');
             previewImage.src = '';
-            // 不再需要clearCanvas()，因为不再使用canvas
             hideMessage();
             currentFile = null;
 
@@ -875,7 +872,7 @@
                 showMessage('请选择图片文件', 'error');
                 return;
             }
-            
+
             currentFile = file;
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -886,9 +883,65 @@
                 videoPreview.style.display = 'none';
                 previewImage.style.display = 'block';
                 hideMessage();
-                
-                previewImage.onload = () => {
-                    // 不再需要updateCanvasSize()，因为不再使用canvas
+
+                // 显示检测按钮
+                document.getElementById('imageControls').innerHTML = `
+                    <button class="btn" id="detectBtn">🔍 开始检测</button>
+                `;
+
+                // 重新绑定检测按钮事件
+                const detectBtn = document.getElementById('detectBtn');
+                detectBtn.onclick = async () => {
+                    if (!currentFile) {
+                        console.error('No file selected');
+                        return;
+                    }
+
+                    // 如果已经有请求在运行，取消它
+                    if (currentRequestController) {
+                        currentRequestController.abort();
+                    }
+
+                    // 创建新的控制器
+                    currentRequestController = new AbortController();
+                    const signal = currentRequestController.signal;
+
+                    loading.style.display = 'block';
+                    document.getElementById('loadingText').textContent = '正在检测图片...';
+
+                    const formData = new FormData();
+                    formData.append('file', currentFile);
+
+                    // 添加检测设置参数
+                    const settings = getCurrentSettings();
+                    if (settings.classes) {
+                        formData.append('classes', settings.classes);
+                    }
+                    formData.append('conf_threshold', settings.confThreshold);
+
+                    try {
+                        const response = await fetch('/api/v1/detect', {
+                            method: 'POST',
+                            body: formData,
+                            signal
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Request failed');
+                        }
+
+                        const data = await response.json();
+                        displayResults(data);
+                    } catch (error) {
+                        if (error.name === 'AbortError') {
+                            console.log('Request was cancelled');
+                            showMessage('请求已取消', 'info');
+                        } else {
+                            showMessage('检测失败：' + error.message, 'error');
+                        }
+                    } finally {
+                        loading.style.display = 'none';
+                    }
                 };
             };
             reader.readAsDataURL(file);
@@ -1194,6 +1247,7 @@
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws/detect`);
+            ws.binaryType = 'arraybuffer'; // 设置二进制数据类型
 
             ws.onopen = () => {
                 console.log('WebSocket 连接成功');
@@ -1201,24 +1255,25 @@
                 wsStatusText.textContent = '已连接';
             };
 
-            ws.onmessage = (event) => {
-                const result = JSON.parse(event.data);
-
-                if (result.success) {
-                    // 标记处理完成，允许发送下一帧
+            ws.onmessage = async (event) => {
+                // 判断是 JSON 还是二进制
+                if (event.data instanceof ArrayBuffer) {
+                    // 二进制图片数据
+                    const blobUrl = URL.createObjectURL(new Blob([event.data], { type: 'image/jpeg' }));
+                    previewImage.src = blobUrl;
+                    previewImage.style.display = 'block';
                     isProcessing = false;
+                } else {
+                    // JSON 元数据
+                    const result = JSON.parse(event.data);
 
-                    // 更新 FPS 显示
-                    updateFpsDisplay();
+                    if (result.success) {
+                        // 更新 FPS 显示
+                        updateFpsDisplay();
 
-                    // 显示标注后的图片
-                    if (result.annotated_image) {
-                        previewImage.src = result.annotated_image;
-                        previewImage.style.display = 'block';
+                        // 更新统计
+                        updateStats(result);
                     }
-
-                    // 更新统计
-                    updateStats(result);
                 }
             };
 
@@ -1259,12 +1314,15 @@
                 tempCanvas.width = cameraVideo.videoWidth || 640;
                 tempCanvas.height = cameraVideo.videoHeight || 480;
 
-                // 绘制视频帧并转换为base64
+                // 绘制视频帧并转换为 JPEG Blob
                 ctx.drawImage(cameraVideo, 0, 0);
-                const base64 = tempCanvas.toDataURL('image/jpeg', 0.7);
-
-                // 发送到WebSocket
-                ws.send(JSON.stringify({ image: base64 }));
+                tempCanvas.toBlob((blob) => {
+                    if (blob && ws.readyState === WebSocket.OPEN) {
+                        // 直接发送二进制数据
+                        ws.send(blob);
+                    }
+                    isProcessing = false;
+                }, 'image/jpeg', 0.7);
 
                 // 立即销毁canvas以释放内存
                 tempCanvas.remove();
@@ -1336,56 +1394,12 @@
             `;
         }
 
-        // Canvas 画框
-        function updateCanvasSize() {
-            // 现在不需要更新canvas，因为检测框直接绘制在图像上
-            // 此函数保留为空，以防有其他地方调用
-        }
-
-
-
         function showMessage(text, type) {
             message.innerHTML = `<div class="message ${type}">${text}</div>`;
         }
 
         function hideMessage() {
             message.innerHTML = '';
-        }
-
-        // 监听窗口大小改变事件
-        window.addEventListener('resize', updateCanvasOnResize);
-
-        // 监听滚动事件
-        window.addEventListener('scroll', updateCanvasOnScroll);
-
-        // 监听页面缩放事件
-        window.addEventListener('zoom', updateCanvasOnResize); // Firefox
-        window.addEventListener('DOMMouseScroll', updateCanvasOnResize); // Firefox
-        document.addEventListener('mousewheel', updateCanvasOnResize); // Chrome/Safari
-
-        // 当图片加载完成后，绑定事件监听器
-        previewImage.onload = () => {
-            updateCanvasSize();
-        };
-
-        // 页面可见性变化时也更新
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                setTimeout(updateCanvasSize, 100); // 短暂延迟以确保DOM已更新
-            }
-        });
-
-        function updateCanvasOnResize() {
-            if (previewImage.src || (cameraVideo.srcObject && cameraVideo.videoWidth > 0)) {
-                // 使用setTimeout确保在浏览器完成渲染后再更新canvas
-                setTimeout(updateCanvasSize, 0);
-            }
-        }
-
-        function updateCanvasOnScroll() {
-            // 在滚动结束后更新canvas
-            clearTimeout(window.scrollTimer);
-            window.scrollTimer = setTimeout(updateCanvasSize, 100);
         }
     </script>
 </body>

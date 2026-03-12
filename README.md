@@ -202,9 +202,44 @@ WS /ws/detect
 
 支持实时图像帧检测，适用于摄像头实时检测场景。
 
+**传输格式：** 使用纯二进制传输，无 base64 编码开销
+
 **消息格式：**
-- 输入：`{"image": "data:image/jpeg;base64,..."}`
-- 输出：检测结果 JSON
+- **输入（前端→后端）**：JPEG 二进制数据（Blob/ArrayBuffer）
+- **输出（后端→前端）**：分两次发送
+  1. JSON 元数据（检测结果）
+  2. JPEG 二进制数据（标注后的图片）
+
+**JSON 元数据格式：**
+
+```json
+{
+  "success": true,
+  "object_count": 2,
+  "objects": [
+    {
+      "bbox": {
+        "x1": 100,
+        "y1": 50,
+        "x2": 200,
+        "y2": 300,
+        "width": 100,
+        "height": 250
+      },
+      "confidence": 0.95,
+      "class_id": 0,
+      "class_name": "person"
+    }
+  ],
+  "inference_time_ms": 45.2,
+  "has_image": true
+}
+```
+
+**性能优势：**
+
+- 相比 base64 编码，数据量减少约 33%
+- 无编解码 CPU 开销，延迟更低
 
 ## Web 界面
 

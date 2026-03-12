@@ -202,9 +202,44 @@ WS /ws/detect
 
 Supports real-time detection of image frames, suitable for live camera detection scenarios.
 
+**Transport Format:** Pure binary transmission, no base64 encoding overhead
+
 **Message Format:**
-- Input: `{"image": "data:image/jpeg;base64,..."}`
-- Output: Detection result JSON
+- **Input (Client→Server)**: JPEG binary data (Blob/ArrayBuffer)
+- **Output (Server→Client)**: Sent in two parts:
+  1. JSON metadata (detection results)
+  2. JPEG binary data (annotated image)
+
+**JSON Metadata Format:**
+
+```json
+{
+  "success": true,
+  "object_count": 2,
+  "objects": [
+    {
+      "bbox": {
+        "x1": 100,
+        "y1": 50,
+        "x2": 200,
+        "y2": 300,
+        "width": 100,
+        "height": 250
+      },
+      "confidence": 0.95,
+      "class_id": 0,
+      "class_name": "person"
+    }
+  ],
+  "inference_time_ms": 45.2,
+  "has_image": true
+}
+```
+
+**Performance Benefits:**
+
+- ~33% reduction in data size compared to base64 encoding
+- No encoding/decoding CPU overhead, lower latency
 
 ## Web Interface
 

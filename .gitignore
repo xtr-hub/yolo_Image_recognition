@@ -123,6 +123,7 @@ dmypy.json
 .vscode/
 .idea/
 .claude/
+.qoder/
 
 # OS generated files
 .DS_Store
