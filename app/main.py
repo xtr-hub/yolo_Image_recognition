@@ -36,17 +36,6 @@ async def websocket_detect(websocket: WebSocket):
                 if frame is not None:
                     # 检测
                     result = detector.detect_video_frame(frame)
-
-                    # 先发送 JSON 元数据
-                    await websocket.send_json({
-                        "success": True,
-                        "object_count": result["object_count"],
-                        "objects": result["objects"],
-                        "inference_time_ms": result["inference_time_ms"],
-                        "has_image": result.get("annotated_image") is not None
-                    })
-
-                    # 再发送二进制标注图片
                     if result.get("annotated_image") is not None:
                         _, buffer = cv2.imencode('.jpg', result["annotated_image"])
                         await websocket.send_bytes(bytes(buffer))

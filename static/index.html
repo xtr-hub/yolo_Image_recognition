@@ -1123,7 +1123,7 @@
                 // 开始发送帧
                 setTimeout(() => {
                     frameInterval = setInterval(sendFrame, 30); // 调整为40ms，对应25FPS
-                }, 1000);
+                }, 100);
 
             } catch (error) {
                 // 更详细的错误处理，包括权限错误
@@ -1256,25 +1256,11 @@
             };
 
             ws.onmessage = async (event) => {
-                // 判断是 JSON 还是二进制
-                if (event.data instanceof ArrayBuffer) {
-                    // 二进制图片数据
                     const blobUrl = URL.createObjectURL(new Blob([event.data], { type: 'image/jpeg' }));
                     previewImage.src = blobUrl;
                     previewImage.style.display = 'block';
                     isProcessing = false;
-                } else {
-                    // JSON 元数据
-                    const result = JSON.parse(event.data);
-
-                    if (result.success) {
-                        // 更新 FPS 显示
-                        updateFpsDisplay();
-
-                        // 更新统计
-                        updateStats(result);
-                    }
-                }
+                    updateFpsDisplay();
             };
 
             ws.onclose = () => {
